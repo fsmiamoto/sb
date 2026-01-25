@@ -1,0 +1,37 @@
+# sb sandbox zshrc
+
+# History
+HISTFILE=~/.zsh_history
+HISTSIZE=10000
+SAVEHIST=10000
+setopt appendhistory
+setopt sharehistory
+setopt hist_ignore_dups
+setopt hist_ignore_space
+
+# Basic options
+setopt autocd
+setopt interactive_comments
+
+# Completion
+autoload -Uz compinit
+compinit
+
+# Key bindings (emacs style)
+bindkey -e
+bindkey '^[[A' history-search-backward
+bindkey '^[[B' history-search-forward
+
+# Aliases
+alias ls='ls --color=auto'
+alias ll='ls -la'
+alias la='ls -A'
+alias vim='nvim'
+alias vi='nvim'
+
+# Zsh plugins (Arch Linux paths)
+source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh 2>/dev/null
+source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh 2>/dev/null
+
+# Initialize starship prompt
+eval "$(starship init zsh)"
