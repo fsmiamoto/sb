@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Callable
 import docker
 from docker.errors import DockerException
 
+from sb.matching import find_matching_sandboxes
 from sb.naming import generate_name
 
 if TYPE_CHECKING:
@@ -301,6 +302,21 @@ class SandboxManager:
         """List all sb-managed sandboxes."""
         containers = self._list_sb_containers()
         return [self._container_to_sandbox_info(c) for c in containers]
+
+    def find_sandboxes(self, query: str) -> list[SandboxInfo]:
+        """Find sandboxes matching a query using fuzzy matching.
+
+        First tries exact match, then falls back to fuzzy matching.
+        Returns list sorted by match quality (best first).
+
+        Args:
+            query: The search query (partial or full sandbox name).
+
+        Returns:
+            List of matching sandboxes, sorted by match quality.
+        """
+        sandboxes = self.list_sandboxes()
+        return find_matching_sandboxes(query, sandboxes)
 
     def get_container_status(self, sandbox: SandboxInfo) -> str:
         """Get the current status of a sandbox's container.

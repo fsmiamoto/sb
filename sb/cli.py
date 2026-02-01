@@ -7,7 +7,38 @@ import sys
 
 import click
 
-from sb.sandbox import SandboxManager
+from sb.sandbox import SandboxInfo, SandboxManager
+
+
+def _resolve_sandbox_by_name(manager: SandboxManager, query: str) -> SandboxInfo:
+    """Resolve sandbox from partial name.
+
+    Args:
+        manager: The SandboxManager instance.
+        query: The partial or full sandbox name to search for.
+
+    Returns:
+        The matching SandboxInfo.
+
+    Raises:
+        ValueError: If zero or multiple sandboxes match.
+    """
+    matches = manager.find_sandboxes(query)
+
+    if not matches:
+        raise ValueError(f"Sandbox '{query}' not found")
+
+    if len(matches) == 1:
+        return matches[0]
+
+    # Multiple matches - format error message
+    lines = [f"Multiple sandboxes match '{query}':"]
+    for sandbox in matches:
+        lines.append(f"  {sandbox.name}  ({sandbox.workspace})")
+    lines.append("")
+    lines.append("Use the full sandbox name or a more specific query.")
+
+    raise ValueError("\n".join(lines))
 
 
 @click.group()
@@ -85,15 +116,13 @@ def attach(name: str | None) -> None:
 
     try:
         if name:
-            container = manager.attach(name=name)
+            # Use fuzzy matching to resolve the sandbox name
+            sandbox = _resolve_sandbox_by_name(manager, name)
+            container = manager.attach(name=sandbox.name)
         else:
             container = manager.attach(workspace=os.getcwd())
-
-        # Get sandbox info for display
-        if name:
-            sandbox = manager.get_sandbox(name)
-        else:
             sandbox = manager.get_sandbox_for_path(os.getcwd())
+
         sandbox_name = sandbox.name if sandbox else container.name
 
         click.echo(f"Attached to sandbox '{sandbox_name}'")
@@ -122,7 +151,9 @@ def stop(name: str | None) -> None:
 
     try:
         if name:
-            sandbox = manager.stop(name=name)
+            # Use fuzzy matching to resolve the sandbox name
+            resolved = _resolve_sandbox_by_name(manager, name)
+            sandbox = manager.stop(name=resolved.name)
         else:
             sandbox = manager.stop(workspace=os.getcwd())
         click.echo(f"Stopped sandbox '{sandbox.name}'.")
@@ -150,11 +181,19 @@ def destroy(name: str | None, force: bool) -> None:
         sys.exit(1)
 
     try:
-        sandbox = manager.destroy(
-            name=name,
-            force=force,
-            confirm_callback=confirm_callback if not force else None,
-        )
+        if name:
+            # Use fuzzy matching to resolve the sandbox name
+            resolved = _resolve_sandbox_by_name(manager, name)
+            sandbox = manager.destroy(
+                name=resolved.name,
+                force=force,
+                confirm_callback=confirm_callback if not force else None,
+            )
+        else:
+            sandbox = manager.destroy(
+                force=force,
+                confirm_callback=confirm_callback if not force else None,
+            )
         click.echo(f"Destroyed sandbox '{sandbox.name}'.")
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
