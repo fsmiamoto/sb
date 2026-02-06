@@ -67,8 +67,11 @@ RUN pacman -Sy --noconfirm \
     mesa \
     && pacman -Scc --noconfirm
 
-# Install Claude Code and Codex globally via npm
-RUN npm install -g @anthropic-ai/claude-code @openai/codex
+# Install Claude Code to /home/sandbox/.local/bin
+RUN HOME=/home/sandbox bash -c 'curl -fsSL https://claude.ai/install.sh | bash'
+
+# Install Codex globally via npm
+RUN npm install -g @openai/codex
 RUN npm install -g agent-browser playwright
 
 # Set up zsh as default shell
@@ -76,6 +79,9 @@ RUN chsh -s /bin/zsh
 
 # Create user home directory structure with workspace
 RUN mkdir -p /home/sandbox/.config /home/sandbox/.local/share /home/sandbox/.cache /home/sandbox/workspace
+
+# Add user local bin to PATH for pip install --user packages
+ENV PATH="/home/sandbox/.local/bin:${PATH}"
 
 # Install Playwright browsers to a shared location accessible by all users
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
