@@ -32,6 +32,7 @@ RUN pacman -Syu --noconfirm && \
     fd \
     jq \
     unzip \
+    just \
     && pacman -Scc --noconfirm
 
 # Configure passwordless sudo for wheel group
