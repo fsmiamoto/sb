@@ -562,13 +562,22 @@ class SandboxManager:
 
         # Use docker exec for interactive session
         # This is more reliable than the Docker SDK for TTY handling
+        # Note: We run as root and use setpriv to drop privileges because
+        # docker exec --user doesn't initialize supplementary groups from
+        # /etc/group. The --init-groups flag ensures wheel group membership.
+        # We also set HOME/USER explicitly since we start as root.
         cmd = [
             "docker",
             "exec",
             "-it",
-            "--user",
-            f"{uid}:{gid}",
+            "-e", "HOME=/home/sandbox",
+            "-e", "USER=sandbox",
+            "-w", "/home/sandbox/workspace",
             container.id,
+            "setpriv",
+            "--reuid", str(uid),
+            "--regid", str(gid),
+            "--init-groups",
             "/bin/zsh",
         ]
 

@@ -24,10 +24,16 @@ if getent passwd "$USER_ID" > /dev/null 2>&1; then
     existing_user=$(getent passwd "$USER_ID" | cut -d: -f1)
     if [ "$existing_user" != "sandbox" ]; then
         sed -i "/^${existing_user}:/d" /etc/passwd
+        sed -i "/^${existing_user}:/d" /etc/shadow
         echo "sandbox:x:$USER_ID:$GROUP_ID::/home/sandbox:/bin/zsh" >> /etc/passwd
     fi
 else
     echo "sandbox:x:$USER_ID:$GROUP_ID::/home/sandbox:/bin/zsh" >> /etc/passwd
+fi
+
+# Ensure shadow entry exists for sandbox user (required for PAM/sudo)
+if ! grep -q "^sandbox:" /etc/shadow; then
+    echo "sandbox:!:19000:0:99999:7:::" >> /etc/shadow
 fi
 
 # Add sandbox user to wheel group for sudo access
