@@ -397,7 +397,7 @@ class SandboxManager:
                     raise ValueError("Sandbox creation cancelled by user")
             else:
                 raise ValueError(
-                    f"Workspace is a sensitive directory. Use --force to override."
+                    "Workspace is a sensitive directory. Use --force to override."
                 )
 
         # Ensure shell configs exist (copy defaults if needed)
