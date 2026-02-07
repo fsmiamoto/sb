@@ -10,6 +10,47 @@ import click
 from sb.sandbox import SandboxInfo, SandboxManager
 
 
+class AliasGroup(click.Group):
+    """Click Group that supports command aliases."""
+
+    ALIASES = {
+        "a": "attach",
+        "c": "create",
+        "d": "destroy",
+    }
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        """Resolve alias to real command name before lookup."""
+        cmd_name = self.ALIASES.get(cmd_name, cmd_name)
+        return super().get_command(ctx, cmd_name)
+
+    def format_commands(
+        self, ctx: click.Context, formatter: click.HelpFormatter
+    ) -> None:
+        """Show aliases alongside commands in help text."""
+        commands = []
+        for subcommand in self.list_commands(ctx):
+            cmd = self.get_command(ctx, subcommand)
+            if cmd is None or cmd.hidden:
+                continue
+
+            # Find alias for this command (reverse lookup)
+            alias = next(
+                (a for a, c in self.ALIASES.items() if c == subcommand), None
+            )
+            if alias:
+                name_display = f"{subcommand}, {alias}"
+            else:
+                name_display = subcommand
+
+            help_text = cmd.get_short_help_str(limit=formatter.width)
+            commands.append((name_display, help_text))
+
+        if commands:
+            with formatter.section("Commands"):
+                formatter.write_dl(commands)
+
+
 def _resolve_sandbox_by_name(manager: SandboxManager, query: str) -> SandboxInfo:
     """Resolve sandbox from partial name.
 
@@ -41,7 +82,7 @@ def _resolve_sandbox_by_name(manager: SandboxManager, query: str) -> SandboxInfo
     raise ValueError("\n".join(lines))
 
 
-@click.group()
+@click.group(cls=AliasGroup)
 def cli() -> None:
     """sb: Docker sandbox tool for coding agents."""
 
