@@ -1,10 +1,14 @@
 # sb
 
-A CLI tool for managing Docker sandbox containers designed for coding agents. Creates isolated development environments with workspace mounts and pre-configured tools (Claude Code, Codex, etc.).
+A CLI tool for managing Docker sandbox containers for coding agents.
+
+Creates isolated development environments with workspace mounts and pre-configured tools (Claude Code, Codex, etc.).
 
 ## Why?
 
-Running coding agents directly on your system means giving them access to everything. `sb` creates isolated Docker containers where agents can only access the specific project directory you choose, while still having access to your API keys and credentials.
+Running coding agents directly on your system means giving them access to everything. 
+
+`sb` creates isolated Docker containers where agents can only access the specific project directory you choose, while still having access to your API keys and credentials.
 
 ## Installation
 
@@ -35,18 +39,6 @@ sb attach [name]    # Attach to sandbox (auto-starts if stopped)
 sb stop [name]      # Stop a running sandbox
 sb destroy [name]   # Remove sandbox completely
 sb list             # List all sandboxes with status
-```
-
-All commands operate on the current directory by default. Use `--name` to target a specific sandbox.
-
-### Create Options
-
-```bash
-sb create --attach              # Create and immediately attach
-sb create --force               # Skip confirmation for sensitive directories
-sb create --mount ~/.npmrc      # Add extra file/directory mount
-sb create --env MY_VAR          # Pass through environment variable
-sb create --image my-image:tag  # Use custom Docker image
 ```
 
 ## Configuration
@@ -84,13 +76,6 @@ The Docker image is Arch Linux-based and includes:
 | `~/.gitconfig` | `~/.gitconfig` | read-only |
 
 Additional mounts can be added via `--mount` or config file.
-
-## How It Works
-
-1. **Deterministic naming:** Each directory gets a unique sandbox name based on its path (`sb-{dirname}-{hash}`)
-2. **UID/GID mapping:** Container runs as your user ID, so files created inside have correct ownership
-3. **Docker labels:** Sandbox metadata stored on containers themselves—no external state files
-4. **Sensitive directory protection:** Warns before creating sandboxes for system directories
 
 ## Requirements
 
