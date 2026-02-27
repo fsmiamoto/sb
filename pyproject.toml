@@ -15,5 +15,12 @@ dependencies = [
     "rich>=13.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-mock>=3.0",
+    "coverage>=7.0",
+]
+
 [project.scripts]
 sb = "sb.cli:cli"

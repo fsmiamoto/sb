@@ -83,7 +83,9 @@ def _score_match(query: str, sandbox: SandboxInfo) -> int | None:
     return None
 
 
-def find_matching_sandboxes(query: str, sandboxes: list[SandboxInfo]) -> list[SandboxInfo]:
+def find_matching_sandboxes(
+    query: str, sandboxes: list[SandboxInfo]
+) -> list[SandboxInfo]:
     """Find sandboxes matching a query, sorted by match quality.
 
     If an exact match exists, returns only that match.

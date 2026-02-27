@@ -30,8 +30,17 @@ fmt:
 fmt-check:
     ruff format --check sb/
 
-# Run all checks (lint + format check)
-check: lint fmt-check
+# Run tests
+test *args:
+    .venv/bin/pytest {{args}}
+
+# Run tests with coverage
+test-cov:
+    .venv/bin/coverage run -m pytest
+    .venv/bin/coverage report
+
+# Run all checks (lint + format check + tests)
+check: lint fmt-check test
 
 # Clean build artifacts
 clean:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -77,8 +78,11 @@ def load_config(path: Path | str | None = None) -> dict[str, Any]:
     try:
         with open(path, "rb") as f:
             file_config = tomllib.load(f)
-    except (OSError, tomllib.TOMLDecodeError):
-        # If file can't be read or parsed, return defaults
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        warnings.warn(
+            f"Failed to load config from {path}: {e}. Using defaults.",
+            stacklevel=2,
+        )
         return config
 
     # Merge file config into defaults

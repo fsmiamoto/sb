@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
+from datetime import datetime
 
 import click
 
+from sb.config import load_config, merge_config
 from sb.sandbox import SandboxInfo, SandboxManager
 
 
@@ -35,9 +38,7 @@ class AliasGroup(click.Group):
                 continue
 
             # Find alias for this command (reverse lookup)
-            alias = next(
-                (a for a, c in self.ALIASES.items() if c == subcommand), None
-            )
+            alias = next((a for a, c in self.ALIASES.items() if c == subcommand), None)
             if alias:
                 name_display = f"{subcommand}, {alias}"
             else:
@@ -83,23 +84,70 @@ def _resolve_sandbox_by_name(manager: SandboxManager, query: str) -> SandboxInfo
 
 
 @click.group(cls=AliasGroup)
-def cli() -> None:
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Path to config file (default: ~/.config/sb/config.toml).",
+)
+@click.pass_context
+def cli(ctx: click.Context, config_path: str | None) -> None:
     """sb: Docker sandbox tool for coding agents."""
+    ctx.ensure_object(dict)
+
+    # Load config from file and create SandboxManager
+    file_config = load_config(config_path)
+    merged = merge_config(file_config, {})
+
+    # Store merged config for commands to use
+    ctx.obj["config"] = merged
+
+    # Create manager from merged config (deferred — only when a command needs it)
+    # Commands that need Docker will call _get_manager(ctx) instead of SandboxManager()
+    ctx.obj["manager"] = None
+    ctx.obj["_manager_kwargs"] = {
+        "extra_mounts": merged.get("extra_mounts", []),
+        "env_passthrough": merged.get("env_passthrough", []),
+        "custom_sensitive_dirs": merged.get("sensitive_dirs", []),
+        **({"image_name": merged["image"]} if merged.get("image") else {}),
+    }
 
 
-def _not_implemented(command: str) -> None:
-    click.echo(f"{command} is not implemented yet.", err=True)
-    sys.exit(1)
+def _get_manager(ctx: click.Context) -> SandboxManager:
+    """Get or create the SandboxManager from context.
+
+    Lazily initializes the manager on first access so that commands
+    like ``--help`` don't require a running Docker daemon.
+    """
+    if ctx.obj["manager"] is None:
+        try:
+            ctx.obj["manager"] = SandboxManager(**ctx.obj["_manager_kwargs"])
+        except RuntimeError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+    return ctx.obj["manager"]
 
 
 @cli.command()
-@click.option("--name", "-n", help="Explicit sandbox name (auto-generated if not provided)")
-@click.option("--force", "-f", is_flag=True, help="Recreate sandbox if it already exists")
+@click.option(
+    "--name", "-n", help="Explicit sandbox name (auto-generated if not provided)"
+)
+@click.option(
+    "--force", "-f", is_flag=True, help="Recreate sandbox if it already exists"
+)
 @click.option("--attach", "-a", is_flag=True, help="Attach to sandbox after creation")
 @click.option("--mount", multiple=True, help="Additional read-only mount (repeatable)")
-@click.option("--env", multiple=True, help="Environment variable to pass (VAR or VAR=value, repeatable)")
+@click.option(
+    "--env",
+    multiple=True,
+    help="Environment variable to pass (VAR or VAR=value, repeatable)",
+)
 @click.option("--image", help="Override Docker image to use")
+@click.pass_context
 def create(
+    ctx: click.Context,
     name: str | None,
     force: bool,
     attach: bool,
@@ -108,17 +156,15 @@ def create(
     image: str | None,
 ) -> None:
     """Create a new sandbox for the current directory."""
-    try:
-        manager = SandboxManager()
-    except RuntimeError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
+    manager = _get_manager(ctx)
 
     def confirm_callback(message: str) -> bool:
         """Confirmation callback using click.confirm()."""
-        # Extract the question from the message (remove the "[y/N]:" suffix if present)
-        prompt = message.rstrip().removesuffix("[y/N]:").rstrip()
-        return click.confirm(prompt, default=False)
+        return click.confirm(message, default=False)
+
+    def warn_callback(message: str) -> None:
+        """Warning callback using click.echo to stderr."""
+        click.echo(f"Warning: {message}", err=True)
 
     try:
         sandbox = manager.create(
@@ -129,8 +175,11 @@ def create(
             env_vars=list(env) if env else None,
             image=image,
             confirm_callback=confirm_callback,
+            warn_callback=warn_callback,
         )
-        click.echo(f"Created sandbox '{sandbox.name}' for workspace '{sandbox.workspace}'")
+        click.echo(
+            f"Created sandbox '{sandbox.name}' for workspace '{sandbox.workspace}'"
+        )
 
         if attach:
             container = manager.attach(name=sandbox.name)
@@ -147,13 +196,10 @@ def create(
 
 @cli.command()
 @click.argument("name", required=False)
-def attach(name: str | None) -> None:
+@click.pass_context
+def attach(ctx: click.Context, name: str | None) -> None:
     """Attach to a sandbox (auto-starts if stopped)."""
-    try:
-        manager = SandboxManager()
-    except RuntimeError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
+    manager = _get_manager(ctx)
 
     try:
         if name:
@@ -182,13 +228,10 @@ def attach(name: str | None) -> None:
 
 @cli.command()
 @click.argument("name", required=False)
-def stop(name: str | None) -> None:
+@click.pass_context
+def stop(ctx: click.Context, name: str | None) -> None:
     """Stop a running sandbox."""
-    try:
-        manager = SandboxManager()
-    except RuntimeError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
+    manager = _get_manager(ctx)
 
     try:
         if name:
@@ -209,17 +252,14 @@ def stop(name: str | None) -> None:
 @cli.command()
 @click.argument("name", required=False)
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt.")
-def destroy(name: str | None, force: bool) -> None:
+@click.pass_context
+def destroy(ctx: click.Context, name: str | None, force: bool) -> None:
     """Remove a sandbox completely."""
 
     def confirm_callback(msg: str) -> bool:
         return click.confirm(msg, default=False)
 
-    try:
-        manager = SandboxManager()
-    except RuntimeError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
+    manager = _get_manager(ctx)
 
     try:
         if name:
@@ -250,9 +290,6 @@ def _format_created_at(created_at: str) -> str:
     Handles Docker's timestamp format with nanosecond precision
     (e.g., 2024-01-25T10:30:00.123456789Z).
     """
-    import re
-    from datetime import datetime
-
     try:
         # Docker timestamps have nanosecond precision (9 digits after decimal)
         # Python's fromisoformat() only handles up to 6 digits (microseconds)
@@ -266,7 +303,7 @@ def _format_created_at(created_at: str) -> str:
 
 
 def _print_sandboxes_rich(
-    sandboxes: list, manager: SandboxManager
+    sandboxes: list[SandboxInfo], manager: SandboxManager
 ) -> None:
     """Print sandbox table using rich library."""
     from rich.console import Console
@@ -300,48 +337,11 @@ def _print_sandboxes_rich(
     console.print(table)
 
 
-def _print_sandboxes_simple(
-    sandboxes: list, manager: SandboxManager
-) -> None:
-    """Print sandbox table using simple formatting."""
-    # Calculate column widths
-    name_width = max(len("Name"), max(len(s.name) for s in sandboxes))
-    workspace_width = max(len("Workspace"), max(len(s.workspace) for s in sandboxes))
-    status_width = max(len("Status"), 8)  # "running" is 7, "stopped" is 7, "unknown" is 7
-
-    # Print header
-    header = (
-        f"{'Name':<{name_width}}  "
-        f"{'Workspace':<{workspace_width}}  "
-        f"{'Status':<{status_width}}  "
-        f"{'Created'}"
-    )
-    click.echo(header)
-    click.echo("-" * len(header))
-
-    # Print rows
-    for sandbox in sandboxes:
-        status = manager.get_container_status(sandbox)
-        if status == "exited":
-            status = "stopped"
-
-        row = (
-            f"{sandbox.name:<{name_width}}  "
-            f"{sandbox.workspace:<{workspace_width}}  "
-            f"{status:<{status_width}}  "
-            f"{_format_created_at(sandbox.created_at)}"
-        )
-        click.echo(row)
-
-
 @cli.command(name="list")
-def list_cmd() -> None:
+@click.pass_context
+def list_cmd(ctx: click.Context) -> None:
     """List all sandboxes with status."""
-    try:
-        manager = SandboxManager()
-    except RuntimeError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
+    manager = _get_manager(ctx)
 
     sandboxes = manager.list_sandboxes()
 
@@ -349,11 +349,7 @@ def list_cmd() -> None:
         click.echo("No sandboxes found. Use 'sb create' to create one.")
         return
 
-    # Try to use rich for nice table output, fall back to simple formatting
-    try:
-        _print_sandboxes_rich(sandboxes, manager)
-    except ImportError:
-        _print_sandboxes_simple(sandboxes, manager)
+    _print_sandboxes_rich(sandboxes, manager)
 
 
 if __name__ == "__main__":
