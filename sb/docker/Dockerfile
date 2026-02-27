@@ -73,6 +73,7 @@ RUN HOME=/home/sandbox bash -c 'curl -fsSL https://claude.ai/install.sh | bash'
 
 # Install Codex globally via npm
 RUN npm install -g @openai/codex
+RUN npm install -g @mariozechner/pi-coding-agent
 RUN npm install -g agent-browser playwright
 
 # Set up zsh as default shell

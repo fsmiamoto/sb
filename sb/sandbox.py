@@ -60,6 +60,7 @@ DEFAULT_MOUNTS: list[MountSpec] = [
         "~/.config/claude-code/", "/home/sandbox/.config/claude-code/", "rw"
     ),  # Claude Code settings
     MountSpec("~/.codex/", "/home/sandbox/.codex/", "rw"),  # Codex needs write access
+    MountSpec("~/.pi/", "/home/sandbox/.pi/", "rw"),  # Pi coding agent config & sessions
     MountSpec("~/.gitconfig", "/home/sandbox/.gitconfig", "ro"),
     # Shell configuration (user-editable)
     MountSpec("~/.config/sb/zshrc", "/home/sandbox/.zshrc", "ro"),
