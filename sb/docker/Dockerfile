@@ -82,8 +82,11 @@ RUN chsh -s /bin/zsh
 # Create user home directory structure with workspace
 RUN mkdir -p /home/sandbox/.config /home/sandbox/.local/share /home/sandbox/.cache /home/sandbox/workspace
 
-# Add user local bin to PATH for pip install --user packages
-ENV PATH="/home/sandbox/.local/bin:${PATH}"
+# Add user local bin and Go bin to PATH
+ENV PATH="/home/sandbox/go/bin:/home/sandbox/.local/bin:${PATH}"
+
+# Install Go CLI tools
+RUN GOPATH=/home/sandbox/go go install github.com/fsmiamoto/ralfinho/cmd/ralfinho@latest
 
 # Install Playwright browsers to a shared location accessible by all users
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
