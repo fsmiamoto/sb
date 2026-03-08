@@ -49,15 +49,16 @@ changelog:
       - Merge branch
 
 homebrew_casks:
-  - repository:
+  - name: sb
+    repository:
       owner: fsmiamoto
       name: homebrew-tap
     homepage: "https://github.com/fsmiamoto/sb"
-    description: "Docker sandbox tool for coding agents"
+    description: "CLI tool for managing Docker sandbox containers for coding agents"
     binaries:
       - sb
     url:
-      verified: "github.com/fsmiamoto/sb/"
+      verified: "github.com/fsmiamoto/sb"
     caveats: "sb requires Docker to be installed and running."
     hooks:
       post:
