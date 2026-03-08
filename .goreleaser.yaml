@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/sb
+    binary: sb
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - name_template: >-
+      {{- .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end -}}
+    formats:
+      - tar.gz
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^build:"
+      - "merge conflict"
+      - Merge pull request
+      - Merge branch
+
+homebrew_casks:
+  - repository:
+      owner: fsmiamoto
+      name: homebrew-tap
+    homepage: "https://github.com/fsmiamoto/sb"
+    description: "Docker sandbox tool for coding agents"
+    binaries:
+      - sb
+    url:
+      verified: "github.com/fsmiamoto/sb/"
+    caveats: "sb requires Docker to be installed and running."
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/sb"]
+          end
+
+release:
+  github:
+    owner: fsmiamoto
+    name: sb
+  draft: false
+  prerelease: auto
+  name_template: "v{{ .Version }}"
