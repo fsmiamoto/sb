@@ -1,4 +1,23 @@
-__pycache__
-*egg-info
-progress.txt
-*.md
+# Go build output
+/build/
+/sb
+
+# GoReleaser output
+/dist/
+
+# Task-loop memory (not project artifacts)
+PROGRESS.md
+NOTES.md
+
+# Editor / OS
+.DS_Store
+*.swp
+*~
+
+# Legacy Python (safe to remove once migration is old)
+__pycache__/
+*.egg-info/
+.venv/
+.coverage
+.pytest_cache/
+.ruff_cache/
