@@ -8,6 +8,7 @@
 # Task-loop memory (not project artifacts)
 PROGRESS.md
 NOTES.md
+PLAN.md
 
 # Editor / OS
 .DS_Store
@@ -21,3 +22,4 @@ __pycache__/
 .coverage
 .pytest_cache/
 .ruff_cache/
+.ralfinho

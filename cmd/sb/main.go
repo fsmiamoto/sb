@@ -22,7 +22,7 @@ var version = "dev"
 func main() {
 	app := &cli.App{
 		Name:                 "sb",
-		Usage:                "Docker sandbox tool for coding agents",
+		Usage:                "Sandboxing tool for coding agents",
 		Version:              version,
 		EnableBashCompletion: true,
 		Flags: []cli.Flag{
