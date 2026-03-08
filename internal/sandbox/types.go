@@ -1,0 +1,111 @@
+package sandbox
+
+import "os"
+
+// MountMode describes whether a bind mount is read-only or read-write.
+type MountMode string
+
+const (
+	// MountModeReadOnly mounts a path read-only inside the container.
+	MountModeReadOnly MountMode = "ro"
+	// MountModeReadWrite mounts a path read-write inside the container.
+	MountModeReadWrite MountMode = "rw"
+
+	// DefaultImageName is the bundled sb sandbox image tag.
+	DefaultImageName = "sb-sandbox:latest"
+)
+
+// MountSpec describes a bind mount between the host and sandbox container.
+type MountSpec struct {
+	Host      string
+	Container string
+	Mode      MountMode
+}
+
+// SandboxInfo captures the metadata sb tracks for a sandbox container.
+type SandboxInfo struct {
+	Name        string
+	Workspace   string
+	CreatedAt   string
+	ContainerID *string
+}
+
+// GetName returns the sandbox name so SandboxInfo can participate in fuzzy matching.
+func (s SandboxInfo) GetName() string {
+	return s.Name
+}
+
+// SensitiveDirs contains the built-in directories that should trigger a warning
+// when users try to sandbox them directly.
+//
+// The current user's home directory is resolved during package initialization,
+// matching the Python implementation's import-time Path.home() behavior.
+var SensitiveDirs = buildSensitiveDirs()
+
+// DefaultMounts is the built-in set of user config mounts applied to sandboxes.
+var DefaultMounts = []MountSpec{
+	{
+		Host:      "~/.claude/",
+		Container: "/home/sandbox/.claude/",
+		Mode:      MountModeReadWrite,
+	},
+	{
+		Host:      "~/.claude.json",
+		Container: "/home/sandbox/.claude.json",
+		Mode:      MountModeReadWrite,
+	},
+	{
+		Host:      "~/.config/claude-code/",
+		Container: "/home/sandbox/.config/claude-code/",
+		Mode:      MountModeReadWrite,
+	},
+	{
+		Host:      "~/.codex/",
+		Container: "/home/sandbox/.codex/",
+		Mode:      MountModeReadWrite,
+	},
+	{
+		Host:      "~/.pi/",
+		Container: "/home/sandbox/.pi/",
+		Mode:      MountModeReadWrite,
+	},
+	{
+		Host:      "~/.gitconfig",
+		Container: "/home/sandbox/.gitconfig",
+		Mode:      MountModeReadOnly,
+	},
+	{
+		Host:      "~/.config/sb/zshrc",
+		Container: "/home/sandbox/.zshrc",
+		Mode:      MountModeReadOnly,
+	},
+	{
+		Host:      "~/.config/sb/starship.toml",
+		Container: "/home/sandbox/.config/starship.toml",
+		Mode:      MountModeReadOnly,
+	},
+	{
+		Host:      "~/.config/sb/nvim/",
+		Container: "/home/sandbox/.config/nvim/",
+		Mode:      MountModeReadWrite,
+	},
+}
+
+func buildSensitiveDirs() []string {
+	dirs := []string{"/"}
+
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		dirs = append(dirs, home)
+	}
+
+	dirs = append(dirs,
+		"/etc",
+		"/var",
+		"/usr",
+		"/bin",
+		"/sbin",
+	)
+
+	return dirs
+}
