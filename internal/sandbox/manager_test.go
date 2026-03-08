@@ -1,0 +1,617 @@
+package sandbox
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"slices"
+	"strings"
+	"testing"
+
+	cerrdefs "github.com/containerd/errdefs"
+	containertypes "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+)
+
+type fakeSandboxClient struct {
+	inspectFunc func(context.Context, string) (containertypes.InspectResponse, error)
+	listFunc    func(context.Context, containertypes.ListOptions) ([]containertypes.Summary, error)
+	createFunc  func(context.Context, *containertypes.Config, *containertypes.HostConfig, *network.NetworkingConfig, *ocispec.Platform, string) (containertypes.CreateResponse, error)
+	startFunc   func(context.Context, string, containertypes.StartOptions) error
+	stopFunc    func(context.Context, string, containertypes.StopOptions) error
+	removeFunc  func(context.Context, string, containertypes.RemoveOptions) error
+}
+
+func (c *fakeSandboxClient) ContainerInspect(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+	if c.inspectFunc == nil {
+		return containertypes.InspectResponse{}, nil
+	}
+	return c.inspectFunc(ctx, containerID)
+}
+
+func (c *fakeSandboxClient) ContainerList(ctx context.Context, options containertypes.ListOptions) ([]containertypes.Summary, error) {
+	if c.listFunc == nil {
+		return nil, nil
+	}
+	return c.listFunc(ctx, options)
+}
+
+func (c *fakeSandboxClient) ContainerCreate(ctx context.Context, config *containertypes.Config, hostConfig *containertypes.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (containertypes.CreateResponse, error) {
+	if c.createFunc == nil {
+		return containertypes.CreateResponse{}, nil
+	}
+	return c.createFunc(ctx, config, hostConfig, networkingConfig, platform, containerName)
+}
+
+func (c *fakeSandboxClient) ContainerStart(ctx context.Context, containerID string, options containertypes.StartOptions) error {
+	if c.startFunc == nil {
+		return nil
+	}
+	return c.startFunc(ctx, containerID, options)
+}
+
+func (c *fakeSandboxClient) ContainerStop(ctx context.Context, containerID string, options containertypes.StopOptions) error {
+	if c.stopFunc == nil {
+		return nil
+	}
+	return c.stopFunc(ctx, containerID, options)
+}
+
+func (c *fakeSandboxClient) ContainerRemove(ctx context.Context, containerID string, options containertypes.RemoveOptions) error {
+	if c.removeFunc == nil {
+		return nil
+	}
+	return c.removeFunc(ctx, containerID, options)
+}
+
+type fakeManagerImageManager struct {
+	ensureImageFunc       func(context.Context, string) error
+	ensureCustomImageFunc func(context.Context, string) error
+}
+
+func (m *fakeManagerImageManager) EnsureImage(ctx context.Context, imageName string) error {
+	if m.ensureImageFunc == nil {
+		return nil
+	}
+	return m.ensureImageFunc(ctx, imageName)
+}
+
+func (m *fakeManagerImageManager) EnsureCustomImage(ctx context.Context, imageName string) error {
+	if m.ensureCustomImageFunc == nil {
+		return nil
+	}
+	return m.ensureCustomImageFunc(ctx, imageName)
+}
+
+type fakeManagerMountBuilder struct {
+	buildFunc func(string, []string) ([]mount.Mount, []string, error)
+}
+
+func (b *fakeManagerMountBuilder) Build(workspace string, extraCLIMounts []string) ([]mount.Mount, []string, error) {
+	if b.buildFunc == nil {
+		return nil, nil, nil
+	}
+	return b.buildFunc(workspace, extraCLIMounts)
+}
+
+func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T) {
+	ctx := context.Background()
+	workspace := "/tmp/project"
+	createdID := "new-container-id"
+	createdAt := "2026-03-08T10:00:00Z"
+	mounts := []mount.Mount{{Type: mount.TypeBind, Source: workspace, Target: workspaceMountTarget, ReadOnly: false}}
+
+	var ensuredBundledImage string
+	var createdConfig *containertypes.Config
+	var createdHostConfig *containertypes.HostConfig
+	var createdContainerName string
+	warns := make([]string, 0)
+	ensureConfigsCalled := 0
+
+	manager := &SandboxManager{
+		imageName:      "sb-sandbox:test",
+		envPassthrough: []string{"TOKEN", "EMPTY"},
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					if containerID == "sb-project-f630ad93" {
+						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+					}
+					if containerID != createdID {
+						t.Fatalf("ContainerInspect() id = %q, want %q or sandbox lookup", containerID, createdID)
+					}
+					return managedInspect(createdID, "sb-project-f630ad93", workspace, createdAt, "created"), nil
+				},
+				createFunc: func(ctx context.Context, config *containertypes.Config, hostConfig *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, containerName string) (containertypes.CreateResponse, error) {
+					createdConfig = config
+					createdHostConfig = hostConfig
+					createdContainerName = containerName
+					return containertypes.CreateResponse{ID: createdID}, nil
+				},
+			}, nil
+		},
+		imageManager: &fakeManagerImageManager{
+			ensureImageFunc: func(ctx context.Context, imageName string) error {
+				ensuredBundledImage = imageName
+				return nil
+			},
+		},
+		mountBuilder: &fakeManagerMountBuilder{
+			buildFunc: func(gotWorkspace string, extraCLIMounts []string) ([]mount.Mount, []string, error) {
+				if gotWorkspace != workspace {
+					t.Fatalf("Build() workspace = %q, want %q", gotWorkspace, workspace)
+				}
+				if !reflect.DeepEqual(extraCLIMounts, []string{"~/extra", "~/missing"}) {
+					t.Fatalf("Build() extraCLIMounts = %#v, want %#v", extraCLIMounts, []string{"~/extra", "~/missing"})
+				}
+				return mounts, []string{"~/missing"}, nil
+			},
+		},
+		getUIDGID: func() (int, int) { return 1000, 1001 },
+		getenv: func(key string) string {
+			switch key {
+			case "TOKEN":
+				return "secret"
+			case "EMPTY":
+				return ""
+			default:
+				return ""
+			}
+		},
+		ensureShellConfigs: func() error {
+			ensureConfigsCalled++
+			return nil
+		},
+	}
+
+	sandbox, err := manager.Create(ctx, CreateOptions{
+		Workspace:   workspace,
+		ExtraMounts: []string{"~/extra", "~/missing"},
+		EnvVars:     []string{"FEATURE=enabled", "TOKEN=override", "CLI_ONLY"},
+		Warn: func(message string) {
+			warns = append(warns, message)
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if got, want := ensuredBundledImage, "sb-sandbox:test"; got != want {
+		t.Fatalf("EnsureImage() image = %q, want %q", got, want)
+	}
+	if ensureConfigsCalled != 1 {
+		t.Fatalf("ensureShellConfigs called %d times, want 1", ensureConfigsCalled)
+	}
+	if createdContainerName != "sb-project-f630ad93" {
+		t.Fatalf("ContainerCreate() name = %q, want %q", createdContainerName, "sb-project-f630ad93")
+	}
+	if createdConfig == nil {
+		t.Fatal("Create() did not call ContainerCreate() with a container config")
+	}
+	if createdHostConfig == nil {
+		t.Fatal("Create() did not call ContainerCreate() with a host config")
+	}
+	if got, want := createdConfig.Image, "sb-sandbox:test"; got != want {
+		t.Fatalf("ContainerCreate() image = %q, want %q", got, want)
+	}
+	if got, want := createdConfig.WorkingDir, workspaceMountTarget; got != want {
+		t.Fatalf("ContainerCreate() working dir = %q, want %q", got, want)
+	}
+	if !createdConfig.OpenStdin || !createdConfig.Tty {
+		t.Fatalf("ContainerCreate() OpenStdin/Tty = %v/%v, want true/true", createdConfig.OpenStdin, createdConfig.Tty)
+	}
+	wantEnv := []string{
+		"FEATURE=enabled",
+		"HOST_GID=1001",
+		"HOST_UID=1000",
+		"TOKEN=override",
+	}
+	if !reflect.DeepEqual(createdConfig.Env, wantEnv) {
+		t.Fatalf("ContainerCreate() env = %#v, want %#v", createdConfig.Env, wantEnv)
+	}
+	wantLabels := map[string]string{
+		managedLabelKey:   managedLabelValue,
+		nameLabelKey:      "sb-project-f630ad93",
+		workspaceLabelKey: workspace,
+	}
+	if !reflect.DeepEqual(createdConfig.Labels, wantLabels) {
+		t.Fatalf("ContainerCreate() labels = %#v, want %#v", createdConfig.Labels, wantLabels)
+	}
+	if !reflect.DeepEqual(createdHostConfig.Mounts, mounts) {
+		t.Fatalf("ContainerCreate() mounts = %#v, want %#v", createdHostConfig.Mounts, mounts)
+	}
+	wantWarns := []string{"Mount path does not exist, skipping: ~/missing"}
+	if !reflect.DeepEqual(warns, wantWarns) {
+		t.Fatalf("warns = %#v, want %#v", warns, wantWarns)
+	}
+	if got, want := sandbox.Name, "sb-project-f630ad93"; got != want {
+		t.Fatalf("Create() sandbox name = %q, want %q", got, want)
+	}
+	if got, want := sandbox.Workspace, workspace; got != want {
+		t.Fatalf("Create() sandbox workspace = %q, want %q", got, want)
+	}
+	if got, want := sandbox.CreatedAt, createdAt; got != want {
+		t.Fatalf("Create() sandbox created_at = %q, want %q", got, want)
+	}
+	if sandbox.ContainerID == nil || *sandbox.ContainerID != createdID {
+		t.Fatalf("Create() sandbox container ID = %#v, want %q", sandbox.ContainerID, createdID)
+	}
+}
+
+func TestSandboxManagerCreateUsesCustomImageWhenCLIImageProvided(t *testing.T) {
+	ctx := context.Background()
+	workspace := "/tmp/project"
+	customImage := "ghcr.io/example/sb:latest"
+	customEnsured := ""
+	bundledCalled := false
+
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					if containerID == "sb-project-f630ad93" {
+						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+					}
+					return managedInspect("new-id", "sb-project-f630ad93", workspace, "2026-03-08T10:00:00Z", "created"), nil
+				},
+				createFunc: func(ctx context.Context, config *containertypes.Config, hostConfig *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, containerName string) (containertypes.CreateResponse, error) {
+					if got, want := config.Image, customImage; got != want {
+						t.Fatalf("ContainerCreate() image = %q, want %q", got, want)
+					}
+					return containertypes.CreateResponse{ID: "new-id"}, nil
+				},
+			}, nil
+		},
+		imageManager: &fakeManagerImageManager{
+			ensureImageFunc: func(context.Context, string) error {
+				bundledCalled = true
+				return nil
+			},
+			ensureCustomImageFunc: func(ctx context.Context, imageName string) error {
+				customEnsured = imageName
+				return nil
+			},
+		},
+		mountBuilder:       &fakeManagerMountBuilder{buildFunc: func(string, []string) ([]mount.Mount, []string, error) { return nil, nil, nil }},
+		ensureShellConfigs: func() error { return nil },
+	}
+
+	if _, err := manager.Create(ctx, CreateOptions{Workspace: workspace, Image: customImage}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if bundledCalled {
+		t.Fatal("Create() called EnsureImage() for an explicit custom image override")
+	}
+	if got, want := customEnsured, customImage; got != want {
+		t.Fatalf("EnsureCustomImage() image = %q, want %q", got, want)
+	}
+}
+
+func TestSandboxManagerCreateRejectsExistingSandboxWithoutForceOrConfirmation(t *testing.T) {
+	ctx := context.Background()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					if containerID != "sb-project-f630ad93" {
+						t.Fatalf("ContainerInspect() id = %q, want %q", containerID, "sb-project-f630ad93")
+					}
+					return managedInspect("existing-id", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "running"), nil
+				},
+			}, nil
+		},
+	}
+
+	_, err := manager.Create(ctx, CreateOptions{Workspace: "/tmp/project"})
+	if err == nil {
+		t.Fatal("Create() error = nil, want existing sandbox error")
+	}
+	if got, want := err.Error(), "Sandbox 'sb-project-f630ad93' already exists. Use --force to recreate."; got != want {
+		t.Fatalf("Create() error = %q, want %q", got, want)
+	}
+}
+
+func TestSandboxManagerCreateRejectsSensitiveWorkspaceWithoutForce(t *testing.T) {
+	ctx := context.Background()
+	manager := &SandboxManager{
+		customSensitiveDirs: []string{"/tmp/project"},
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+	}
+
+	_, err := manager.Create(ctx, CreateOptions{Workspace: "/tmp/project"})
+	if err == nil {
+		t.Fatal("Create() error = nil, want sensitive workspace rejection")
+	}
+	if got, want := err.Error(), "Workspace is a sensitive directory. Use --force to override."; got != want {
+		t.Fatalf("Create() error = %q, want %q", got, want)
+	}
+}
+
+func TestSandboxManagerAttachStartsStoppedSandbox(t *testing.T) {
+	ctx := context.Background()
+	startedIDs := make([]string, 0)
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					switch containerID {
+					case "sb-project-f630ad93":
+						return managedInspect("container-id", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "exited"), nil
+					case "container-id":
+						return managedInspect("container-id", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "exited"), nil
+					default:
+						t.Fatalf("ContainerInspect() id = %q, want sandbox name or container ID", containerID)
+						return containertypes.InspectResponse{}, nil
+					}
+				},
+				startFunc: func(ctx context.Context, containerID string, options containertypes.StartOptions) error {
+					startedIDs = append(startedIDs, containerID)
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	sandbox, err := manager.Attach(ctx, "sb-project-f630ad93", "")
+	if err != nil {
+		t.Fatalf("Attach() error = %v", err)
+	}
+	if !reflect.DeepEqual(startedIDs, []string{"container-id"}) {
+		t.Fatalf("Attach() started IDs = %#v, want %#v", startedIDs, []string{"container-id"})
+	}
+	if got, want := sandbox.Name, "sb-project-f630ad93"; got != want {
+		t.Fatalf("Attach() sandbox name = %q, want %q", got, want)
+	}
+}
+
+func TestSandboxManagerStopStopsRunningSandboxResolvedFromWorkspace(t *testing.T) {
+	ctx := context.Background()
+	stoppedIDs := make([]string, 0)
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					switch containerID {
+					case "sb-project-f630ad93", "running-id":
+						return managedInspect("running-id", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "running"), nil
+					default:
+						t.Fatalf("ContainerInspect() id = %q, want generated sandbox name or container ID", containerID)
+						return containertypes.InspectResponse{}, nil
+					}
+				},
+				stopFunc: func(ctx context.Context, containerID string, options containertypes.StopOptions) error {
+					stoppedIDs = append(stoppedIDs, containerID)
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	sandbox, err := manager.Stop(ctx, "", "/tmp/project")
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if !reflect.DeepEqual(stoppedIDs, []string{"running-id"}) {
+		t.Fatalf("Stop() stopped IDs = %#v, want %#v", stoppedIDs, []string{"running-id"})
+	}
+	if got, want := sandbox.Workspace, "/tmp/project"; got != want {
+		t.Fatalf("Stop() sandbox workspace = %q, want %q", got, want)
+	}
+}
+
+func TestSandboxManagerDestroyStopsAndRemovesContainerWhenConfirmed(t *testing.T) {
+	ctx := context.Background()
+	stoppedIDs := make([]string, 0)
+	removedIDs := make([]string, 0)
+	confirmedMessages := make([]string, 0)
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					switch containerID {
+					case "sb-project-f630ad93", "running-id":
+						return managedInspect("running-id", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "running"), nil
+					default:
+						t.Fatalf("ContainerInspect() id = %q, want generated sandbox name or container ID", containerID)
+						return containertypes.InspectResponse{}, nil
+					}
+				},
+				stopFunc: func(ctx context.Context, containerID string, options containertypes.StopOptions) error {
+					stoppedIDs = append(stoppedIDs, containerID)
+					return nil
+				},
+				removeFunc: func(ctx context.Context, containerID string, options containertypes.RemoveOptions) error {
+					removedIDs = append(removedIDs, containerID)
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	sandbox, err := manager.Destroy(ctx, DestroyOptions{
+		Workspace: "/tmp/project",
+		Confirm: func(message string) bool {
+			confirmedMessages = append(confirmedMessages, message)
+			return true
+		},
+	})
+	if err != nil {
+		t.Fatalf("Destroy() error = %v", err)
+	}
+	wantMessages := []string{"Are you sure you want to destroy sandbox 'sb-project-f630ad93'?\nThis will stop and remove the container."}
+	if !reflect.DeepEqual(confirmedMessages, wantMessages) {
+		t.Fatalf("Destroy() confirmation messages = %#v, want %#v", confirmedMessages, wantMessages)
+	}
+	if !reflect.DeepEqual(stoppedIDs, []string{"running-id"}) {
+		t.Fatalf("Destroy() stopped IDs = %#v, want %#v", stoppedIDs, []string{"running-id"})
+	}
+	if !reflect.DeepEqual(removedIDs, []string{"running-id"}) {
+		t.Fatalf("Destroy() removed IDs = %#v, want %#v", removedIDs, []string{"running-id"})
+	}
+	if got, want := sandbox.Name, "sb-project-f630ad93"; got != want {
+		t.Fatalf("Destroy() sandbox name = %q, want %q", got, want)
+	}
+}
+
+func TestSandboxManagerListAndFindSandboxesUseManagedContainerLabels(t *testing.T) {
+	ctx := context.Background()
+	listCalls := 0
+	containers := []containertypes.Summary{
+		managedSummary("one-id", "sb-my-app-a1b2c3d4", "/home/user/projects/my-app", 1),
+		managedSummary("two-id", "sb-api-server-e5f6a7b8", "/home/user/projects/api-server", 2),
+	}
+
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				listFunc: func(ctx context.Context, options containertypes.ListOptions) ([]containertypes.Summary, error) {
+					listCalls++
+					if !options.All {
+						t.Fatal("ContainerList() All = false, want true")
+					}
+					labels := options.Filters.Get("label")
+					if !slices.Contains(labels, managedLabelKey+"="+managedLabelValue) {
+						t.Fatalf("ContainerList() label filters = %#v, want managed label", labels)
+					}
+					return containers, nil
+				},
+			}, nil
+		},
+	}
+
+	sandboxes, err := manager.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if got, want := len(sandboxes), 2; got != want {
+		t.Fatalf("List() returned %d sandboxes, want %d", got, want)
+	}
+	if got, want := sandboxes[0].Name, "sb-my-app-a1b2c3d4"; got != want {
+		t.Fatalf("List() first sandbox = %q, want %q", got, want)
+	}
+	if sandboxes[0].ContainerID == nil || *sandboxes[0].ContainerID != "one-id" {
+		t.Fatalf("List() first container ID = %#v, want %q", sandboxes[0].ContainerID, "one-id")
+	}
+	if got, want := sandboxes[0].CreatedAt, "1970-01-01T00:00:01Z"; got != want {
+		t.Fatalf("List() first created_at = %q, want %q", got, want)
+	}
+
+	matches, err := manager.FindSandboxes(ctx, "api")
+	if err != nil {
+		t.Fatalf("FindSandboxes() error = %v", err)
+	}
+	if got, want := len(matches), 1; got != want {
+		t.Fatalf("FindSandboxes() returned %d matches, want %d", got, want)
+	}
+	if got, want := matches[0].Name, "sb-api-server-e5f6a7b8"; got != want {
+		t.Fatalf("FindSandboxes() first match = %q, want %q", got, want)
+	}
+	if got, want := listCalls, 2; got != want {
+		t.Fatalf("ContainerList() called %d times, want %d", got, want)
+	}
+}
+
+func TestSandboxManagerGetContainerStatusHandlesRunningAndMissingContainers(t *testing.T) {
+	ctx := context.Background()
+	inspectErr := errors.New("inspect failed")
+	runningSandbox := SandboxInfo{Name: "sb-project-f630ad93", ContainerID: stringPointer("running-id")}
+	missingSandbox := SandboxInfo{Name: "sb-missing-0f5f4f0e", ContainerID: stringPointer("missing-id")}
+	noIDSandbox := SandboxInfo{Name: "sb-no-id-0f5f4f0e"}
+	brokenSandbox := SandboxInfo{Name: "sb-broken-0f5f4f0e", ContainerID: stringPointer("broken-id")}
+
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					switch containerID {
+					case "running-id":
+						return managedInspect("running-id", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "running"), nil
+					case "missing-id":
+						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+					case "broken-id":
+						return containertypes.InspectResponse{}, inspectErr
+					default:
+						t.Fatalf("ContainerInspect() id = %q, want a test container ID", containerID)
+						return containertypes.InspectResponse{}, nil
+					}
+				},
+			}, nil
+		},
+	}
+
+	status, err := manager.GetContainerStatus(ctx, runningSandbox)
+	if err != nil {
+		t.Fatalf("GetContainerStatus(running) error = %v", err)
+	}
+	if got, want := status, "running"; got != want {
+		t.Fatalf("GetContainerStatus(running) = %q, want %q", got, want)
+	}
+
+	status, err = manager.GetContainerStatus(ctx, missingSandbox)
+	if err != nil {
+		t.Fatalf("GetContainerStatus(missing) error = %v", err)
+	}
+	if got, want := status, unknownContainerStatus; got != want {
+		t.Fatalf("GetContainerStatus(missing) = %q, want %q", got, want)
+	}
+
+	status, err = manager.GetContainerStatus(ctx, noIDSandbox)
+	if err != nil {
+		t.Fatalf("GetContainerStatus(no-id) error = %v", err)
+	}
+	if got, want := status, unknownContainerStatus; got != want {
+		t.Fatalf("GetContainerStatus(no-id) = %q, want %q", got, want)
+	}
+
+	_, err = manager.GetContainerStatus(ctx, brokenSandbox)
+	if err == nil {
+		t.Fatal("GetContainerStatus(broken) error = nil, want inspect failure")
+	}
+	if !errors.Is(err, inspectErr) {
+		t.Fatalf("GetContainerStatus(broken) error should unwrap inspect failure")
+	}
+	if !strings.Contains(err.Error(), `inspect container for sandbox "sb-broken-0f5f4f0e"`) {
+		t.Fatalf("GetContainerStatus(broken) error = %q, want inspect context", err)
+	}
+}
+
+func managedInspect(id string, name string, workspace string, createdAt string, status string) containertypes.InspectResponse {
+	return containertypes.InspectResponse{
+		ContainerJSONBase: &containertypes.ContainerJSONBase{
+			ID:      id,
+			Name:    "/" + name,
+			Created: createdAt,
+			State: &containertypes.State{
+				Status: containertypes.ContainerState(status),
+			},
+		},
+		Config: &containertypes.Config{
+			Labels: map[string]string{
+				managedLabelKey:   managedLabelValue,
+				nameLabelKey:      name,
+				workspaceLabelKey: workspace,
+			},
+		},
+	}
+}
+
+func managedSummary(id string, name string, workspace string, created int64) containertypes.Summary {
+	return containertypes.Summary{
+		ID:      id,
+		Names:   []string{"/" + name},
+		Created: created,
+		Labels: map[string]string{
+			managedLabelKey:   managedLabelValue,
+			nameLabelKey:      name,
+			workspaceLabelKey: workspace,
+		},
+	}
+}
