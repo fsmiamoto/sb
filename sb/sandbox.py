@@ -101,7 +101,7 @@ class ShellConfigManager:
     @staticmethod
     def _get_default_configs_dir() -> Path:
         """Get the path to the default config files shipped with sb."""
-        return Path(__file__).parent / "docker" / "configs"
+        return Path(__file__).resolve().parent.parent / "assets" / "docker" / "configs"
 
     def ensure_configs(self) -> None:
         """Ensure shell configuration files exist, copying defaults if needed.
@@ -250,7 +250,7 @@ class ImageManager:
     @staticmethod
     def _get_dockerfile_path() -> Path:
         """Get the path to the Dockerfile."""
-        return Path(__file__).parent / "docker" / "Dockerfile"
+        return Path(__file__).resolve().parent.parent / "assets" / "docker" / "Dockerfile"
 
     def ensure_image(self, image_name: str) -> Image:
         """Ensure a Docker image is available, building or pulling as needed.

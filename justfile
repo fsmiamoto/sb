@@ -8,11 +8,11 @@ install:
 
 # Build the Docker sandbox image
 build:
-    docker build -t sb-sandbox:latest sb/docker/
+    docker build -t sb-sandbox:latest assets/docker/
 
 # Rebuild the Docker image from scratch (no cache)
 rebuild:
-    docker build --no-cache -t sb-sandbox:latest sb/docker/
+    docker build --no-cache -t sb-sandbox:latest assets/docker/
 
 # Run linting with ruff
 lint:
