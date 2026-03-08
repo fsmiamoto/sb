@@ -21,9 +21,10 @@ var version = "dev"
 
 func main() {
 	app := &cli.App{
-		Name:    "sb",
-		Usage:   "Docker sandbox tool for coding agents",
-		Version: version,
+		Name:                 "sb",
+		Usage:                "Docker sandbox tool for coding agents",
+		Version:              version,
+		EnableBashCompletion: true,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "config",
@@ -37,6 +38,7 @@ func main() {
 			stopCommand(),
 			destroyCommand(),
 			listCommand(),
+			completionCommand(),
 		},
 	}
 
@@ -232,10 +234,11 @@ func createCommand() *cli.Command {
 
 func attachCommand() *cli.Command {
 	return &cli.Command{
-		Name:      "attach",
-		Aliases:   []string{"a"},
-		Usage:     "Attach to a sandbox (auto-starts if stopped)",
-		ArgsUsage: "[name]",
+		Name:         "attach",
+		Aliases:      []string{"a"},
+		Usage:        "Attach to a sandbox (auto-starts if stopped)",
+		ArgsUsage:    "[name]",
+		BashComplete: completeSandboxNames,
 		Action: func(cCtx *cli.Context) error {
 			fileConfig, _ := loadMergedConfig(cCtx)
 			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
@@ -282,9 +285,10 @@ func attachCommand() *cli.Command {
 
 func stopCommand() *cli.Command {
 	return &cli.Command{
-		Name:      "stop",
-		Usage:     "Stop a running sandbox",
-		ArgsUsage: "[name]",
+		Name:         "stop",
+		Usage:        "Stop a running sandbox",
+		ArgsUsage:    "[name]",
+		BashComplete: completeSandboxNames,
 		Action: func(cCtx *cli.Context) error {
 			fileConfig, _ := loadMergedConfig(cCtx)
 			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
@@ -326,10 +330,11 @@ func stopCommand() *cli.Command {
 
 func destroyCommand() *cli.Command {
 	return &cli.Command{
-		Name:      "destroy",
-		Aliases:   []string{"d"},
-		Usage:     "Remove a sandbox completely",
-		ArgsUsage: "[name]",
+		Name:         "destroy",
+		Aliases:      []string{"d"},
+		Usage:        "Remove a sandbox completely",
+		ArgsUsage:    "[name]",
+		BashComplete: completeSandboxNames,
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "force",
