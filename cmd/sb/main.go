@@ -1,10 +1,18 @@
 package main
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
+	"time"
 
 	cli "github.com/urfave/cli/v2"
+
+	"github.com/fsmiamoto/sb/internal/config"
+	"github.com/fsmiamoto/sb/internal/sandbox"
 )
 
 var version = "dev"
@@ -14,14 +22,435 @@ func main() {
 		Name:    "sb",
 		Usage:   "Docker sandbox tool for coding agents",
 		Version: version,
-		Action: func(ctx *cli.Context) error {
-			_, err := fmt.Fprintln(ctx.App.Writer, ctx.App.Version)
-			return err
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "config",
+				Aliases: []string{"c"},
+				Usage:   "Path to config file (default: ~/.config/sb/config.toml)",
+			},
+		},
+		Commands: []*cli.Command{
+			createCommand(),
+			attachCommand(),
+			stopCommand(),
+			destroyCommand(),
+			listCommand(),
 		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+// ---------- helpers ----------
+
+// confirm prompts the user with a y/n question on stderr and reads from stdin.
+func confirm(message string) bool {
+	fmt.Fprintf(os.Stderr, "%s [y/N] ", message)
+	reader := bufio.NewReader(os.Stdin)
+	line, _ := reader.ReadString('\n')
+	line = strings.TrimSpace(strings.ToLower(line))
+	return line == "y" || line == "yes"
+}
+
+// warn prints a warning message to stderr.
+func warn(message string) {
+	fmt.Fprintf(os.Stderr, "Warning: %s\n", message)
+}
+
+// exitError prints to stderr and returns a cli.ExitError with code 1.
+func exitError(format string, args ...any) error {
+	msg := fmt.Sprintf(format, args...)
+	return cli.Exit(msg, 1)
+}
+
+// loadMergedConfig loads config from the file (or default path) and returns it.
+func loadMergedConfig(cCtx *cli.Context) (config.Config, error) {
+	configPath := cCtx.String("config")
+	fileConfig, err := config.LoadConfig(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+	}
+	return fileConfig, nil
+}
+
+// newManager creates a SandboxManager from a merged config.
+func newManager(merged config.MergedConfig) (*sandbox.SandboxManager, error) {
+	return sandbox.NewSandboxManager(sandbox.SandboxManagerOptions{
+		ImageName:           merged.Image,
+		ExtraMounts:         merged.ExtraMounts,
+		EnvPassthrough:      merged.EnvPassthrough,
+		CustomSensitiveDirs: merged.SensitiveDirs,
+	}), nil
+}
+
+// resolveSandboxByName uses fuzzy matching to find a unique sandbox.
+func resolveSandboxByName(ctx context.Context, mgr *sandbox.SandboxManager, query string) (sandbox.SandboxInfo, error) {
+	matches, err := mgr.FindSandboxes(ctx, query)
+	if err != nil {
+		return sandbox.SandboxInfo{}, err
+	}
+
+	if len(matches) == 0 {
+		return sandbox.SandboxInfo{}, fmt.Errorf("Sandbox '%s' not found", query)
+	}
+
+	if len(matches) == 1 {
+		return matches[0], nil
+	}
+
+	// Multiple matches
+	lines := []string{fmt.Sprintf("Multiple sandboxes match '%s':", query)}
+	for _, s := range matches {
+		lines = append(lines, fmt.Sprintf("  %s  (%s)", s.Name, s.Workspace))
+	}
+	lines = append(lines, "", "Use the full sandbox name or a more specific query.")
+	return sandbox.SandboxInfo{}, fmt.Errorf("%s", strings.Join(lines, "\n"))
+}
+
+// formatCreatedAt formats a Docker ISO timestamp for display.
+func formatCreatedAt(createdAt string) string {
+	if createdAt == "" {
+		return ""
+	}
+
+	// Docker timestamps have nanosecond precision (9 digits after decimal).
+	// Go's time.Parse only handles up to 9 digits, but the trailing Z needs
+	// to be handled. Truncate fractional seconds to 6 digits for consistency.
+	re := regexp.MustCompile(`\.(\d{6})\d+`)
+	timestamp := re.ReplaceAllString(createdAt, ".$1")
+
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02T15:04:05.999999Z07:00",
+		"2006-01-02T15:04:05",
+	} {
+		if t, err := time.Parse(layout, timestamp); err == nil {
+			return t.Format("2006-01-02 15:04")
+		}
+	}
+
+	// Fallback: return first 16 chars.
+	if len(createdAt) >= 16 {
+		return createdAt[:16]
+	}
+	return createdAt
+}
+
+// ---------- commands ----------
+
+func createCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "create",
+		Aliases: []string{"c"},
+		Usage:   "Create a new sandbox for the current directory",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "name",
+				Aliases: []string{"n"},
+				Usage:   "Explicit sandbox name (auto-generated if not provided)",
+			},
+			&cli.BoolFlag{
+				Name:    "force",
+				Aliases: []string{"f"},
+				Usage:   "Recreate sandbox if it already exists",
+			},
+			&cli.BoolFlag{
+				Name:    "attach",
+				Aliases: []string{"a"},
+				Usage:   "Attach to sandbox after creation",
+			},
+			&cli.StringSliceFlag{
+				Name:  "mount",
+				Usage: "Additional read-only mount (repeatable)",
+			},
+			&cli.StringSliceFlag{
+				Name:  "env",
+				Usage: "Environment variable to pass (VAR or VAR=value, repeatable)",
+			},
+			&cli.StringFlag{
+				Name:  "image",
+				Usage: "Override Docker image to use",
+			},
+		},
+		Action: func(cCtx *cli.Context) error {
+			fileConfig, _ := loadMergedConfig(cCtx)
+
+			cliMounts := cCtx.StringSlice("mount")
+			cliEnvs := cCtx.StringSlice("env")
+			cliImage := cCtx.String("image")
+
+			merged := config.MergeConfig(fileConfig, config.CLIArgs{
+				Mount: cliMounts,
+				Env:   cliEnvs,
+				Image: cliImage,
+			})
+
+			mgr, err := newManager(merged)
+			if err != nil {
+				return exitError("%v", err)
+			}
+
+			ctx := context.Background()
+			sb, err := mgr.Create(ctx, sandbox.CreateOptions{
+				Name:        cCtx.String("name"),
+				Force:       cCtx.Bool("force"),
+				ExtraMounts: cliMounts,
+				EnvVars:     cliEnvs,
+				Image:       cliImage,
+				Confirm:     confirm,
+				Warn:        warn,
+			})
+			if err != nil {
+				return exitError("%v", err)
+			}
+
+			fmt.Printf("Created sandbox '%s' for workspace '%s'\n", sb.Name, sb.Workspace)
+
+			if cCtx.Bool("attach") {
+				attached, err := mgr.Attach(ctx, sb.Name, "")
+				if err != nil {
+					return exitError("%v", err)
+				}
+				fmt.Printf("Attached to sandbox '%s'\n", attached.Name)
+				exitCode, err := mgr.ExecShell(ctx, attached)
+				if err != nil {
+					return exitError("%v", err)
+				}
+				os.Exit(exitCode)
+			}
+
+			return nil
+		},
+	}
+}
+
+func attachCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "attach",
+		Aliases:   []string{"a"},
+		Usage:     "Attach to a sandbox (auto-starts if stopped)",
+		ArgsUsage: "[name]",
+		Action: func(cCtx *cli.Context) error {
+			fileConfig, _ := loadMergedConfig(cCtx)
+			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
+
+			mgr, err := newManager(merged)
+			if err != nil {
+				return exitError("%v", err)
+			}
+
+			ctx := context.Background()
+			var sb sandbox.SandboxInfo
+
+			if cCtx.NArg() > 0 {
+				query := cCtx.Args().First()
+				resolved, err := resolveSandboxByName(ctx, mgr, query)
+				if err != nil {
+					return exitError("%v", err)
+				}
+				sb, err = mgr.Attach(ctx, resolved.Name, "")
+				if err != nil {
+					return exitError("%v", err)
+				}
+			} else {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return exitError("get current directory: %v", err)
+				}
+				sb, err = mgr.Attach(ctx, "", cwd)
+				if err != nil {
+					return exitError("%v", err)
+				}
+			}
+
+			fmt.Printf("Attached to sandbox '%s'\n", sb.Name)
+			exitCode, err := mgr.ExecShell(ctx, sb)
+			if err != nil {
+				return exitError("%v", err)
+			}
+			os.Exit(exitCode)
+			return nil
+		},
+	}
+}
+
+func stopCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "stop",
+		Usage:     "Stop a running sandbox",
+		ArgsUsage: "[name]",
+		Action: func(cCtx *cli.Context) error {
+			fileConfig, _ := loadMergedConfig(cCtx)
+			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
+
+			mgr, err := newManager(merged)
+			if err != nil {
+				return exitError("%v", err)
+			}
+
+			ctx := context.Background()
+
+			if cCtx.NArg() > 0 {
+				query := cCtx.Args().First()
+				resolved, err := resolveSandboxByName(ctx, mgr, query)
+				if err != nil {
+					return exitError("%v", err)
+				}
+				sb, err := mgr.Stop(ctx, resolved.Name, "")
+				if err != nil {
+					return exitError("%v", err)
+				}
+				fmt.Printf("Stopped sandbox '%s'.\n", sb.Name)
+			} else {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return exitError("get current directory: %v", err)
+				}
+				sb, err := mgr.Stop(ctx, "", cwd)
+				if err != nil {
+					return exitError("%v", err)
+				}
+				fmt.Printf("Stopped sandbox '%s'.\n", sb.Name)
+			}
+
+			return nil
+		},
+	}
+}
+
+func destroyCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "destroy",
+		Aliases:   []string{"d"},
+		Usage:     "Remove a sandbox completely",
+		ArgsUsage: "[name]",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "force",
+				Aliases: []string{"f"},
+				Usage:   "Skip confirmation prompt",
+			},
+		},
+		Action: func(cCtx *cli.Context) error {
+			fileConfig, _ := loadMergedConfig(cCtx)
+			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
+
+			mgr, err := newManager(merged)
+			if err != nil {
+				return exitError("%v", err)
+			}
+
+			ctx := context.Background()
+			force := cCtx.Bool("force")
+
+			var confirmFunc sandbox.ConfirmFunc
+			if !force {
+				confirmFunc = confirm
+			}
+
+			if cCtx.NArg() > 0 {
+				query := cCtx.Args().First()
+				resolved, err := resolveSandboxByName(ctx, mgr, query)
+				if err != nil {
+					return exitError("%v", err)
+				}
+				sb, err := mgr.Destroy(ctx, sandbox.DestroyOptions{
+					Name:    resolved.Name,
+					Force:   force,
+					Confirm: confirmFunc,
+				})
+				if err != nil {
+					return exitError("%v", err)
+				}
+				fmt.Printf("Destroyed sandbox '%s'.\n", sb.Name)
+			} else {
+				sb, err := mgr.Destroy(ctx, sandbox.DestroyOptions{
+					Force:   force,
+					Confirm: confirmFunc,
+				})
+				if err != nil {
+					return exitError("%v", err)
+				}
+				fmt.Printf("Destroyed sandbox '%s'.\n", sb.Name)
+			}
+
+			return nil
+		},
+	}
+}
+
+func listCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "list",
+		Usage: "List all sandboxes with status",
+		Action: func(cCtx *cli.Context) error {
+			fileConfig, _ := loadMergedConfig(cCtx)
+			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
+
+			mgr, err := newManager(merged)
+			if err != nil {
+				return exitError("%v", err)
+			}
+
+			ctx := context.Background()
+			sandboxes, err := mgr.List(ctx)
+			if err != nil {
+				return exitError("%v", err)
+			}
+
+			if len(sandboxes) == 0 {
+				fmt.Println("No sandboxes found. Use 'sb create' to create one.")
+				return nil
+			}
+
+			printSandboxTable(ctx, mgr, sandboxes)
+			return nil
+		},
+	}
+}
+
+// printSandboxTable outputs a simple aligned table of sandboxes.
+// Phase 4 task 3 will replace this with a lipgloss/table colored version.
+func printSandboxTable(ctx context.Context, mgr *sandbox.SandboxManager, sandboxes []sandbox.SandboxInfo) {
+	// Compute column widths
+	nameW, wsW, statusW := len("NAME"), len("WORKSPACE"), len("STATUS")
+	type row struct {
+		name, workspace, status, created string
+	}
+	rows := make([]row, 0, len(sandboxes))
+	for _, sb := range sandboxes {
+		status, err := mgr.GetContainerStatus(ctx, sb)
+		if err != nil {
+			status = "unknown"
+		}
+		if status == "exited" {
+			status = "stopped"
+		}
+		r := row{
+			name:      sb.Name,
+			workspace: sb.Workspace,
+			status:    status,
+			created:   formatCreatedAt(sb.CreatedAt),
+		}
+		if len(r.name) > nameW {
+			nameW = len(r.name)
+		}
+		if len(r.workspace) > wsW {
+			wsW = len(r.workspace)
+		}
+		if len(r.status) > statusW {
+			statusW = len(r.status)
+		}
+		rows = append(rows, r)
+	}
+
+	fmtStr := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds  %%s\n", nameW, wsW, statusW)
+	fmt.Printf(fmtStr, "NAME", "WORKSPACE", "STATUS", "CREATED")
+	for _, r := range rows {
+		fmt.Printf(fmtStr, r.name, r.workspace, r.status, r.created)
 	}
 }
