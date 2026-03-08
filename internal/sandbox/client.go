@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"os"
 	"sync"
 
 	dockerclient "github.com/docker/docker/client"
@@ -24,6 +25,7 @@ type DockerClientProvider struct {
 	newClient   func(...dockerclient.Opt) (*dockerclient.Client, error)
 	pingClient  func(context.Context, *dockerclient.Client) error
 	closeClient func(*dockerclient.Client) error
+	resolveHost func() string
 }
 
 // DockerConnectionError wraps the underlying Docker SDK failure while keeping
@@ -68,7 +70,12 @@ func (p *DockerClientProvider) Client(ctx context.Context) (*dockerclient.Client
 		return p.client, nil
 	}
 
-	cli, err := p.newClient(dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation())
+	opts := []dockerclient.Opt{dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation()}
+	if host := p.resolveHost(); host != "" {
+		opts = append(opts, dockerclient.WithHost(host))
+	}
+
+	cli, err := p.newClient(opts...)
 	if err != nil {
 		return nil, &DockerConnectionError{cause: err}
 	}
@@ -107,6 +114,11 @@ func (p *DockerClientProvider) initDefaults() {
 	}
 	if p.closeClient == nil {
 		p.closeClient = defaultCloseDockerClient
+	}
+	if p.resolveHost == nil {
+		p.resolveHost = func() string {
+			return resolveDockerHost(os.Getenv, os.UserHomeDir)
+		}
 	}
 }
 

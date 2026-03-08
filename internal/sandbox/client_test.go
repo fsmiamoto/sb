@@ -35,6 +35,7 @@ func TestDockerClientProviderClientLazilyInitializesAndCaches(t *testing.T) {
 			closeCalls++
 			return nil
 		},
+		resolveHost: func() string { return "" },
 	}
 
 	first, err := provider.Client(context.Background())
@@ -80,6 +81,7 @@ func TestDockerClientProviderClientRetriesAfterCreationFailure(t *testing.T) {
 			t.Fatal("closeClient should not be called when client creation fails")
 			return nil
 		},
+		resolveHost: func() string { return "" },
 	}
 
 	_, err := provider.Client(context.Background())
@@ -123,6 +125,7 @@ func TestDockerClientProviderClientClosesAndRetriesAfterPingFailure(t *testing.T
 			closeCalls++
 			return nil
 		},
+		resolveHost: func() string { return "" },
 	}
 
 	_, err := provider.Client(context.Background())
@@ -173,6 +176,7 @@ func TestDockerClientProviderCloseClosesCachedClientAndResetsCache(t *testing.T)
 			}
 			return nil
 		},
+		resolveHost: func() string { return "" },
 	}
 
 	_, err := provider.Client(context.Background())
