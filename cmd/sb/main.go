@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	lipgloss "charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
 	cli "github.com/urfave/cli/v2"
 
 	"github.com/fsmiamoto/sb/internal/config"
@@ -413,44 +415,77 @@ func listCommand() *cli.Command {
 	}
 }
 
-// printSandboxTable outputs a simple aligned table of sandboxes.
-// Phase 4 task 3 will replace this with a lipgloss/table colored version.
-func printSandboxTable(ctx context.Context, mgr *sandbox.SandboxManager, sandboxes []sandbox.SandboxInfo) {
-	// Compute column widths
-	nameW, wsW, statusW := len("NAME"), len("WORKSPACE"), len("STATUS")
-	type row struct {
-		name, workspace, status, created string
+// Table style constants — match the Python Rich table colors.
+var (
+	greenStyle  = lipgloss.NewStyle().Foreground(lipgloss.Green)
+	yellowStyle = lipgloss.NewStyle().Foreground(lipgloss.Yellow)
+	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.White)
+	borderStyle = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+)
+
+const (
+	colName      = 0
+	colWorkspace = 1
+	colStatus    = 2
+	colCreated   = 3
+)
+
+// statusText returns the display-ready status and its style.
+func statusText(raw string) (string, lipgloss.Style) {
+	switch raw {
+	case "running":
+		return "running", greenStyle
+	case "exited", "stopped":
+		return "stopped", yellowStyle
+	default:
+		return "unknown", dimStyle
 	}
-	rows := make([]row, 0, len(sandboxes))
+}
+
+// printSandboxTable outputs a lipgloss-styled table of sandboxes.
+func printSandboxTable(ctx context.Context, mgr *sandbox.SandboxManager, sandboxes []sandbox.SandboxInfo) {
+	// Build rows and collect per-row status styles.
+	type rowMeta struct {
+		statusStyle lipgloss.Style
+	}
+	metas := make([]rowMeta, 0, len(sandboxes))
+
+	t := table.New().
+		Headers("NAME", "WORKSPACE", "STATUS", "CREATED").
+		Border(lipgloss.RoundedBorder()).
+		BorderStyle(borderStyle)
+
 	for _, sb := range sandboxes {
-		status, err := mgr.GetContainerStatus(ctx, sb)
+		raw, err := mgr.GetContainerStatus(ctx, sb)
 		if err != nil {
-			status = "unknown"
+			raw = "unknown"
 		}
-		if status == "exited" {
-			status = "stopped"
-		}
-		r := row{
-			name:      sb.Name,
-			workspace: sb.Workspace,
-			status:    status,
-			created:   formatCreatedAt(sb.CreatedAt),
-		}
-		if len(r.name) > nameW {
-			nameW = len(r.name)
-		}
-		if len(r.workspace) > wsW {
-			wsW = len(r.workspace)
-		}
-		if len(r.status) > statusW {
-			statusW = len(r.status)
-		}
-		rows = append(rows, r)
+		display, sty := statusText(raw)
+		metas = append(metas, rowMeta{statusStyle: sty})
+		t.Row(sb.Name, sb.Workspace, display, formatCreatedAt(sb.CreatedAt))
 	}
 
-	fmtStr := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds  %%s\n", nameW, wsW, statusW)
-	fmt.Printf(fmtStr, "NAME", "WORKSPACE", "STATUS", "CREATED")
-	for _, r := range rows {
-		fmt.Printf(fmtStr, r.name, r.workspace, r.status, r.created)
-	}
+	t.StyleFunc(func(row, col int) lipgloss.Style {
+		base := lipgloss.NewStyle().PaddingLeft(1).PaddingRight(1)
+		if row == table.HeaderRow {
+			return headerStyle.PaddingLeft(1).PaddingRight(1)
+		}
+		switch col {
+		case colName:
+			return base.Foreground(lipgloss.Cyan)
+		case colWorkspace:
+			return base
+		case colStatus:
+			if row >= 0 && row < len(metas) {
+				return base.Inherit(metas[row].statusStyle)
+			}
+			return base
+		case colCreated:
+			return base.Foreground(lipgloss.BrightBlack)
+		}
+		return base
+	})
+
+	lipgloss.Println(t)
 }
