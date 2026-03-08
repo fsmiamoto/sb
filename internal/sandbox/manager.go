@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -98,6 +99,10 @@ type SandboxManager struct {
 	getUIDGID          func() (int, int)
 	getenv             func(string) string
 	ensureShellConfigs func() error
+	stdin              io.Reader
+	stdout             io.Writer
+	stderr             io.Writer
+	runShellCommand    interactiveCommandRunner
 }
 
 // NewSandboxManager returns a sandbox manager configured with the shared Docker
@@ -433,7 +438,19 @@ func (m *SandboxManager) initDefaults() {
 		m.getenv = os.Getenv
 	}
 	if m.ensureShellConfigs == nil {
-		m.ensureShellConfigs = func() error { return nil }
+		m.ensureShellConfigs = NewShellConfigManager("").EnsureConfigs
+	}
+	if m.stdin == nil {
+		m.stdin = os.Stdin
+	}
+	if m.stdout == nil {
+		m.stdout = os.Stdout
+	}
+	if m.stderr == nil {
+		m.stderr = os.Stderr
+	}
+	if m.runShellCommand == nil {
+		m.runShellCommand = runInteractiveCommand
 	}
 }
 
