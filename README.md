@@ -6,17 +6,31 @@ Creates isolated development environments with workspace mounts and pre-configur
 
 ## Why?
 
-Running coding agents directly on your system means giving them access to everything. 
+Running coding agents directly on your system means giving them access to everything.
 
 `sb` creates isolated Docker containers where agents can only access the specific project directory you choose, while still having access to your API keys and credentials.
 
 ## Installation
 
+### Homebrew (macOS / Linux)
+
 ```bash
-pip install -e .
+brew install fsmiamoto/tap/sb
 ```
 
-Requires Docker to be installed and running.
+### Download binary
+
+Pre-built binaries for macOS and Linux (amd64/arm64) are available on the [Releases](https://github.com/fsmiamoto/sb/releases) page.
+
+### From source
+
+```bash
+go install github.com/fsmiamoto/sb/cmd/sb@latest
+```
+
+### Requirements
+
+- Docker must be installed and running.
 
 ## Quick Start
 
@@ -39,6 +53,16 @@ sb attach [name]    # Attach to sandbox (auto-starts if stopped)
 sb stop [name]      # Stop a running sandbox
 sb destroy [name]   # Remove sandbox completely
 sb list             # List all sandboxes with status
+```
+
+Command aliases: `c` → create, `a` → attach, `d` → destroy.
+
+### Shell Completions
+
+```bash
+sb completion bash   # Bash completion script
+sb completion zsh    # Zsh completion script
+sb completion fish   # Fish completion script
 ```
 
 ## Configuration
@@ -76,11 +100,6 @@ The Docker image is Arch Linux-based and includes:
 | `~/.gitconfig` | `~/.gitconfig` | read-only |
 
 Additional mounts can be added via `--mount` or config file.
-
-## Requirements
-
-- Python 3.9+
-- Docker
 
 ## License
 
