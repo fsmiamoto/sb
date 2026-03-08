@@ -6,6 +6,23 @@ default:
 install:
     pip install -e .
 
+# Build the Go CLI binary from cmd/sb into ./build/
+go-build:
+    mkdir -p build
+    go build -o build/sb ./cmd/sb
+
+# Install the Go CLI binary into GOBIN/GOPATH/bin
+go-install:
+    go install ./cmd/sb
+
+# Run Go tests
+go-test:
+    go test ./...
+
+# Run Go linting (prefer golangci-lint when available)
+go-lint:
+    if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run ./...; else echo "golangci-lint not found; falling back to go vet ./..." >&2; go vet ./...; fi
+
 # Build the Docker sandbox image
 build:
     docker build -t sb-sandbox:latest assets/docker/
