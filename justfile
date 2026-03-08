@@ -37,3 +37,26 @@ docker-rebuild:
 # Clean build artifacts
 clean:
     rm -rf build/ dist/
+
+# Bump version, create a git tag, and push it to trigger a release.
+# Usage: just bump major|minor|patch
+bump part:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    latest=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+    latest=${latest:-v0.0.0}
+    IFS='.' read -r major minor patch <<< "${latest#v}"
+    case "{{ part }}" in
+        major) major=$((major + 1)); minor=0; patch=0 ;;
+        minor) minor=$((minor + 1)); patch=0 ;;
+        patch) patch=$((patch + 1)) ;;
+        *) echo "Usage: just bump major|minor|patch" >&2; exit 1 ;;
+    esac
+    next="v${major}.${minor}.${patch}"
+    echo "Current: ${latest}"
+    echo "Next:    ${next}"
+    read -rp "Tag and push ${next}? [y/N] " confirm
+    [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
+    git tag -a "${next}" -m "Release ${next}"
+    git push origin "${next}"
+    echo "Pushed tag ${next} — release workflow will run automatically."
