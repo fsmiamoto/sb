@@ -441,7 +441,7 @@ func statusText(raw string) (string, lipgloss.Style) {
 	switch raw {
 	case "running":
 		return "running", greenStyle
-	case "exited", "stopped":
+	case "exited", "stopped", "created":
 		return "stopped", yellowStyle
 	default:
 		return "unknown", dimStyle
