@@ -292,28 +292,26 @@ func stopCommand() *cli.Command {
 
 			ctx := context.Background()
 
+			var name, workspace string
 			if cCtx.NArg() > 0 {
-				query := cCtx.Args().First()
-				resolved, err := resolveSandboxByName(ctx, mgr, query)
+				resolved, err := resolveSandboxByName(ctx, mgr, cCtx.Args().First())
 				if err != nil {
 					return exitError("%v", err)
 				}
-				sb, err := mgr.Stop(ctx, resolved.Name, "")
-				if err != nil {
-					return exitError("%v", err)
-				}
-				fmt.Printf("Stopped sandbox '%s'.\n", sb.Name)
+				name = resolved.Name
 			} else {
 				cwd, err := os.Getwd()
 				if err != nil {
 					return exitError("get current directory: %v", err)
 				}
-				sb, err := mgr.Stop(ctx, "", cwd)
-				if err != nil {
-					return exitError("%v", err)
-				}
-				fmt.Printf("Stopped sandbox '%s'.\n", sb.Name)
+				workspace = cwd
 			}
+
+			sb, err := mgr.Stop(ctx, name, workspace)
+			if err != nil {
+				return exitError("%v", err)
+			}
+			fmt.Printf("Stopped sandbox '%s'.\n", sb.Name)
 
 			return nil
 		},
@@ -348,31 +346,24 @@ func destroyCommand() *cli.Command {
 				confirmFunc = confirm
 			}
 
+			var name string
 			if cCtx.NArg() > 0 {
-				query := cCtx.Args().First()
-				resolved, err := resolveSandboxByName(ctx, mgr, query)
+				resolved, err := resolveSandboxByName(ctx, mgr, cCtx.Args().First())
 				if err != nil {
 					return exitError("%v", err)
 				}
-				sb, err := mgr.Destroy(ctx, sandbox.DestroyOptions{
-					Name:    resolved.Name,
-					Force:   force,
-					Confirm: confirmFunc,
-				})
-				if err != nil {
-					return exitError("%v", err)
-				}
-				fmt.Printf("Destroyed sandbox '%s'.\n", sb.Name)
-			} else {
-				sb, err := mgr.Destroy(ctx, sandbox.DestroyOptions{
-					Force:   force,
-					Confirm: confirmFunc,
-				})
-				if err != nil {
-					return exitError("%v", err)
-				}
-				fmt.Printf("Destroyed sandbox '%s'.\n", sb.Name)
+				name = resolved.Name
 			}
+
+			sb, err := mgr.Destroy(ctx, sandbox.DestroyOptions{
+				Name:    name,
+				Force:   force,
+				Confirm: confirmFunc,
+			})
+			if err != nil {
+				return exitError("%v", err)
+			}
+			fmt.Printf("Destroyed sandbox '%s'.\n", sb.Name)
 
 			return nil
 		},
