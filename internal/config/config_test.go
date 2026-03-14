@@ -86,6 +86,18 @@ func TestLoadConfig(t *testing.T) {
 		assertConfigEqual(t, config, want)
 	})
 
+	t.Run("directory path returns defaults and error", func(t *testing.T) {
+		dir := t.TempDir()
+		config, err := LoadConfig(dir)
+		if err == nil {
+			t.Fatal("LoadConfig should return an error when path is a directory")
+		}
+		if !strings.Contains(err.Error(), "path is a directory") {
+			t.Fatalf("LoadConfig error = %q, want message containing %q", err.Error(), "path is a directory")
+		}
+		assertConfigEqual(t, config, DefaultConfig())
+	})
+
 	t.Run("invalid toml returns defaults and error", func(t *testing.T) {
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		writeFile(t, configFile, "not valid toml [[[")

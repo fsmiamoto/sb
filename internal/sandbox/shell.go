@@ -223,8 +223,7 @@ func runInteractiveCommand(ctx context.Context, name string, args []string, stdi
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 
-	err := cmd.Run()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return exitErr.ExitCode(), nil
@@ -232,9 +231,5 @@ func runInteractiveCommand(ctx context.Context, name string, args []string, stdi
 		return 0, err
 	}
 
-	if cmd.ProcessState == nil {
-		return 0, nil
-	}
-
-	return cmd.ProcessState.ExitCode(), nil
+	return 0, nil
 }
