@@ -583,6 +583,347 @@ func TestSandboxManagerGetContainerStatusHandlesRunningAndMissingContainers(t *t
 	}
 }
 
+func TestSandboxInfoFromInspect(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		inspect containertypes.InspectResponse
+		want    SandboxInfo
+	}{
+		{
+			name:    "full inspect with all fields",
+			inspect: managedInspect("abc123", "sb-project-f630ad93", "/home/user/project", "2026-03-08T10:30:00Z", "running"),
+			want: SandboxInfo{
+				Name:        "sb-project-f630ad93",
+				Workspace:   "/home/user/project",
+				CreatedAt:   "2026-03-08T10:30:00Z",
+				ContainerID: ptrStr("abc123"),
+			},
+		},
+		{
+			name: "falls back to container name when label is empty",
+			inspect: containertypes.InspectResponse{
+				ContainerJSONBase: &containertypes.ContainerJSONBase{
+					ID:      "def456",
+					Name:    "/my-container",
+					Created: "2026-01-01T00:00:00Z",
+				},
+				Config: &containertypes.Config{
+					Labels: map[string]string{
+						managedLabelKey:   managedLabelValue,
+						workspaceLabelKey: "/workspace",
+					},
+				},
+			},
+			want: SandboxInfo{
+				Name:        "my-container",
+				Workspace:   "/workspace",
+				CreatedAt:   "2026-01-01T00:00:00Z",
+				ContainerID: ptrStr("def456"),
+			},
+		},
+		{
+			name: "nil config yields empty labels",
+			inspect: containertypes.InspectResponse{
+				ContainerJSONBase: &containertypes.ContainerJSONBase{
+					ID:      "ghi789",
+					Name:    "/fallback-name",
+					Created: "2026-06-15T12:00:00Z",
+				},
+			},
+			want: SandboxInfo{
+				Name:        "fallback-name",
+				Workspace:   "",
+				CreatedAt:   "2026-06-15T12:00:00Z",
+				ContainerID: ptrStr("ghi789"),
+			},
+		},
+		{
+			name: "nil ContainerJSONBase yields empty createdAt",
+			inspect: containertypes.InspectResponse{
+				Config: &containertypes.Config{
+					Labels: map[string]string{
+						nameLabelKey:      "sb-test",
+						workspaceLabelKey: "/tmp/test",
+					},
+				},
+			},
+			want: SandboxInfo{
+				Name:        "sb-test",
+				Workspace:   "/tmp/test",
+				CreatedAt:   "",
+				ContainerID: nil,
+			},
+		},
+		{
+			name:    "empty ID yields nil ContainerID",
+			inspect: containertypes.InspectResponse{},
+			want: SandboxInfo{
+				Name:        "",
+				Workspace:   "",
+				CreatedAt:   "",
+				ContainerID: nil,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := sandboxInfoFromInspect(tc.inspect)
+			assertSandboxInfoEqual(t, got, tc.want)
+		})
+	}
+}
+
+func TestSandboxInfoFromSummary(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		summary containertypes.Summary
+		want    SandboxInfo
+	}{
+		{
+			name:    "full summary with labels and created timestamp",
+			summary: managedSummary("abc123", "sb-project-f630ad93", "/home/user/project", 1741427400),
+			want: SandboxInfo{
+				Name:        "sb-project-f630ad93",
+				Workspace:   "/home/user/project",
+				CreatedAt:   "2025-03-08T09:50:00Z",
+				ContainerID: ptrStr("abc123"),
+			},
+		},
+		{
+			name: "falls back to first container name when label is empty",
+			summary: containertypes.Summary{
+				ID:    "def456",
+				Names: []string{"/my-container"},
+				Labels: map[string]string{
+					workspaceLabelKey: "/workspace",
+				},
+			},
+			want: SandboxInfo{
+				Name:        "my-container",
+				Workspace:   "/workspace",
+				CreatedAt:   "",
+				ContainerID: ptrStr("def456"),
+			},
+		},
+		{
+			name: "zero created timestamp yields empty createdAt",
+			summary: containertypes.Summary{
+				ID: "ghi789",
+				Labels: map[string]string{
+					nameLabelKey: "sb-zero",
+				},
+				Created: 0,
+			},
+			want: SandboxInfo{
+				Name:        "sb-zero",
+				Workspace:   "",
+				CreatedAt:   "",
+				ContainerID: ptrStr("ghi789"),
+			},
+		},
+		{
+			name: "nil labels and empty names",
+			summary: containertypes.Summary{
+				ID:      "jkl012",
+				Created: 1704067200,
+			},
+			want: SandboxInfo{
+				Name:        "",
+				Workspace:   "",
+				CreatedAt:   "2024-01-01T00:00:00Z",
+				ContainerID: ptrStr("jkl012"),
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := sandboxInfoFromSummary(tc.summary)
+			assertSandboxInfoEqual(t, got, tc.want)
+		})
+	}
+}
+
+func TestInspectLabels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		inspect containertypes.InspectResponse
+		want    map[string]string
+	}{
+		{
+			name:    "nil config returns empty map",
+			inspect: containertypes.InspectResponse{},
+			want:    map[string]string{},
+		},
+		{
+			name:    "nil labels returns empty map",
+			inspect: containertypes.InspectResponse{Config: &containertypes.Config{}},
+			want:    map[string]string{},
+		},
+		{
+			name: "returns labels from config",
+			inspect: containertypes.InspectResponse{
+				Config: &containertypes.Config{
+					Labels: map[string]string{"key": "value"},
+				},
+			},
+			want: map[string]string{"key": "value"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := inspectLabels(tc.inspect)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("inspectLabels() = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsManagedInspect(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		inspect containertypes.InspectResponse
+		want    bool
+	}{
+		{
+			name:    "managed container",
+			inspect: managedInspect("id", "name", "/ws", "", "running"),
+			want:    true,
+		},
+		{
+			name: "unmanaged container with wrong label value",
+			inspect: containertypes.InspectResponse{
+				Config: &containertypes.Config{
+					Labels: map[string]string{managedLabelKey: "false"},
+				},
+			},
+			want: false,
+		},
+		{
+			name:    "no config at all",
+			inspect: containertypes.InspectResponse{},
+			want:    false,
+		},
+		{
+			name: "no managed label",
+			inspect: containertypes.InspectResponse{
+				Config: &containertypes.Config{
+					Labels: map[string]string{"other": "label"},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isManagedInspect(tc.inspect); got != tc.want {
+				t.Fatalf("isManagedInspect() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestStringPointer(t *testing.T) {
+	t.Parallel()
+
+	if got := stringPointer(""); got != nil {
+		t.Fatalf("stringPointer(\"\") = %v, want nil", got)
+	}
+
+	got := stringPointer("hello")
+	if got == nil {
+		t.Fatal("stringPointer(\"hello\") = nil, want non-nil")
+	}
+	if *got != "hello" {
+		t.Fatalf("*stringPointer(\"hello\") = %q, want %q", *got, "hello")
+	}
+
+	// Verify it returns a new pointer (not aliased to the input).
+	original := "test"
+	ptr := stringPointer(original)
+	original = "changed"
+	if *ptr != "test" {
+		t.Fatalf("stringPointer should copy the value, got %q after mutating original", *ptr)
+	}
+}
+
+func TestCloneStrings(t *testing.T) {
+	t.Parallel()
+
+	original := []string{"a", "b", "c"}
+	cloned := cloneStrings(original)
+
+	if !reflect.DeepEqual(cloned, original) {
+		t.Fatalf("cloneStrings() = %v, want %v", cloned, original)
+	}
+
+	// Mutating the clone should not affect the original.
+	cloned[0] = "x"
+	if original[0] != "a" {
+		t.Fatal("cloneStrings() should produce an independent copy")
+	}
+
+	// Nil input yields an empty (non-nil) slice.
+	nilClone := cloneStrings(nil)
+	if nilClone == nil {
+		t.Fatal("cloneStrings(nil) = nil, want non-nil empty slice")
+	}
+	if len(nilClone) != 0 {
+		t.Fatalf("cloneStrings(nil) len = %d, want 0", len(nilClone))
+	}
+}
+
+func TestNormalizeImageName(t *testing.T) {
+	t.Parallel()
+
+	if got := normalizeImageName(""); got != DefaultImageName {
+		t.Fatalf("normalizeImageName(\"\") = %q, want %q", got, DefaultImageName)
+	}
+
+	if got := normalizeImageName("custom:v1"); got != "custom:v1" {
+		t.Fatalf("normalizeImageName(\"custom:v1\") = %q, want %q", got, "custom:v1")
+	}
+}
+
+func assertSandboxInfoEqual(t *testing.T, got, want SandboxInfo) {
+	t.Helper()
+	if got.Name != want.Name {
+		t.Fatalf("Name = %q, want %q", got.Name, want.Name)
+	}
+	if got.Workspace != want.Workspace {
+		t.Fatalf("Workspace = %q, want %q", got.Workspace, want.Workspace)
+	}
+	if got.CreatedAt != want.CreatedAt {
+		t.Fatalf("CreatedAt = %q, want %q", got.CreatedAt, want.CreatedAt)
+	}
+	if (got.ContainerID == nil) != (want.ContainerID == nil) {
+		t.Fatalf("ContainerID nil = %v, want nil = %v", got.ContainerID == nil, want.ContainerID == nil)
+	}
+	if got.ContainerID != nil && *got.ContainerID != *want.ContainerID {
+		t.Fatalf("ContainerID = %q, want %q", *got.ContainerID, *want.ContainerID)
+	}
+}
+
+func ptrStr(s string) *string {
+	return &s
+}
+
 func managedInspect(id string, name string, workspace string, createdAt string, status string) containertypes.InspectResponse {
 	return containertypes.InspectResponse{
 		ContainerJSONBase: &containertypes.ContainerJSONBase{

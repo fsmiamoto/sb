@@ -627,21 +627,21 @@ func (m *SandboxManager) buildEnvironment(extraEnvVars []string) []string {
 func sandboxInfoFromInspect(inspect containertypes.InspectResponse) SandboxInfo {
 	labels := inspectLabels(inspect)
 	name := labels[nameLabelKey]
-	if name == "" {
-		name = strings.TrimPrefix(inspect.Name, "/")
-	}
 
-	workspace := labels[workspaceLabelKey]
-	createdAt := ""
+	var id, createdAt string
 	if inspect.ContainerJSONBase != nil {
+		id = inspect.ContainerJSONBase.ID
 		createdAt = inspect.ContainerJSONBase.Created
+		if name == "" {
+			name = strings.TrimPrefix(inspect.ContainerJSONBase.Name, "/")
+		}
 	}
 
 	return SandboxInfo{
 		Name:        name,
-		Workspace:   workspace,
+		Workspace:   labels[workspaceLabelKey],
 		CreatedAt:   createdAt,
-		ContainerID: stringPointer(inspect.ID),
+		ContainerID: stringPointer(id),
 	}
 }
 
