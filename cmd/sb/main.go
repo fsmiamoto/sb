@@ -242,27 +242,25 @@ func attachCommand() *cli.Command {
 			mgr := newManager(merged)
 
 			ctx := context.Background()
-			var sb sandbox.SandboxInfo
 
+			var name, workspace string
 			if cCtx.NArg() > 0 {
-				query := cCtx.Args().First()
-				resolved, err := resolveSandboxByName(ctx, mgr, query)
+				resolved, err := resolveSandboxByName(ctx, mgr, cCtx.Args().First())
 				if err != nil {
 					return exitError("%v", err)
 				}
-				sb, err = mgr.Attach(ctx, resolved.Name, "")
-				if err != nil {
-					return exitError("%v", err)
-				}
+				name = resolved.Name
 			} else {
 				cwd, err := os.Getwd()
 				if err != nil {
 					return exitError("get current directory: %v", err)
 				}
-				sb, err = mgr.Attach(ctx, "", cwd)
-				if err != nil {
-					return exitError("%v", err)
-				}
+				workspace = cwd
+			}
+
+			sb, err := mgr.Attach(ctx, name, workspace)
+			if err != nil {
+				return exitError("%v", err)
 			}
 
 			fmt.Printf("Attached to sandbox '%s'\n", sb.Name)
