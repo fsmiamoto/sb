@@ -1507,6 +1507,101 @@ func TestSandboxManagerGetContainerStatusHandlesRunningAndMissingContainers(t *t
 	}
 }
 
+func TestListGetClientError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	clientErr := errors.New("docker unavailable")
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return nil, clientErr
+		},
+	}
+
+	_, err := manager.List(ctx)
+	if !errors.Is(err, clientErr) {
+		t.Fatalf("List() error = %v, want %v", err, clientErr)
+	}
+}
+
+func TestGetContainerStatusGetClientError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	clientErr := errors.New("docker unavailable")
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return nil, clientErr
+		},
+	}
+
+	_, err := manager.GetContainerStatus(ctx, SandboxInfo{
+		Name:        "sb-test-12345678",
+		ContainerID: stringPointer("some-id"),
+	})
+	if !errors.Is(err, clientErr) {
+		t.Fatalf("GetContainerStatus() error = %v, want %v", err, clientErr)
+	}
+}
+
+func TestGetContainerStatusNilAndEmptyState(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		inspect containertypes.InspectResponse
+	}{
+		{
+			name: "nil State",
+			inspect: containertypes.InspectResponse{
+				ContainerJSONBase: &containertypes.ContainerJSONBase{
+					ID:    "nil-state-id",
+					Name:  "/sb-test-12345678",
+					State: nil,
+				},
+			},
+		},
+		{
+			name: "empty Status",
+			inspect: containertypes.InspectResponse{
+				ContainerJSONBase: &containertypes.ContainerJSONBase{
+					ID:   "empty-status-id",
+					Name: "/sb-test-12345678",
+					State: &containertypes.State{
+						Status: "",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			inspect := tc.inspect
+			manager := &SandboxManager{
+				getClient: func(context.Context) (dockerSandboxClient, error) {
+					return &fakeSandboxClient{
+						inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+							return inspect, nil
+						},
+					}, nil
+				},
+			}
+
+			status, err := manager.GetContainerStatus(ctx, SandboxInfo{
+				Name:        "sb-test-12345678",
+				ContainerID: stringPointer("some-id"),
+			})
+			if err != nil {
+				t.Fatalf("GetContainerStatus() error = %v", err)
+			}
+			if status != unknownContainerStatus {
+				t.Fatalf("GetContainerStatus() = %q, want %q", status, unknownContainerStatus)
+			}
+		})
+	}
+}
+
 func TestSandboxManagerBuildEnvironment(t *testing.T) {
 	t.Parallel()
 
