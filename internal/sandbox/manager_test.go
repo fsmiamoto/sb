@@ -114,7 +114,7 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 	ensureConfigsCalled := 0
 
 	manager := &SandboxManager{
-		imageName:      "sb-sandbox:test",
+		imageName:      DefaultImageName,
 		envPassthrough: []string{"TOKEN", "EMPTY"},
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
@@ -181,7 +181,7 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	if got, want := ensuredBundledImage, "sb-sandbox:test"; got != want {
+	if got, want := ensuredBundledImage, DefaultImageName; got != want {
 		t.Fatalf("EnsureImage() image = %q, want %q", got, want)
 	}
 	if ensureConfigsCalled != 1 {
@@ -196,7 +196,7 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 	if createdHostConfig == nil {
 		t.Fatal("Create() did not call ContainerCreate() with a host config")
 	}
-	if got, want := createdConfig.Image, "sb-sandbox:test"; got != want {
+	if got, want := createdConfig.Image, DefaultImageName; got != want {
 		t.Fatalf("ContainerCreate() image = %q, want %q", got, want)
 	}
 	if got, want := createdConfig.WorkingDir, workspaceMountTarget; got != want {
@@ -288,6 +288,57 @@ func TestSandboxManagerCreateUsesCustomImageWhenCLIImageProvided(t *testing.T) {
 		t.Fatal("Create() called EnsureImage() for an explicit custom image override")
 	}
 	if got, want := customEnsured, customImage; got != want {
+		t.Fatalf("EnsureCustomImage() image = %q, want %q", got, want)
+	}
+}
+
+func TestSandboxManagerCreatePullsConfigLevelCustomImage(t *testing.T) {
+	ctx := context.Background()
+	workspace := "/tmp/project"
+	configImage := "ghcr.io/example/custom:latest"
+	customEnsured := ""
+	bundledCalled := false
+
+	manager := &SandboxManager{
+		imageName: configImage, // set via config file, not CLI
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					if containerID == "sb-project-f630ad93" {
+						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+					}
+					return managedInspect("new-id", "sb-project-f630ad93", workspace, "2026-03-08T10:00:00Z", "created"), nil
+				},
+				createFunc: func(ctx context.Context, config *containertypes.Config, hostConfig *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, containerName string) (containertypes.CreateResponse, error) {
+					if got, want := config.Image, configImage; got != want {
+						t.Fatalf("ContainerCreate() image = %q, want %q", got, want)
+					}
+					return containertypes.CreateResponse{ID: "new-id"}, nil
+				},
+			}, nil
+		},
+		imageManager: &fakeManagerImageManager{
+			ensureImageFunc: func(context.Context, string) error {
+				bundledCalled = true
+				return nil
+			},
+			ensureCustomImageFunc: func(ctx context.Context, imageName string) error {
+				customEnsured = imageName
+				return nil
+			},
+		},
+		mountBuilder:       &fakeManagerMountBuilder{buildFunc: func(string, []string) ([]mount.Mount, []string, error) { return nil, nil, nil }},
+		ensureShellConfigs: func() error { return nil },
+	}
+
+	// No opts.Image — the custom image comes from the manager's config, not CLI.
+	if _, err := manager.Create(ctx, CreateOptions{Workspace: workspace}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if bundledCalled {
+		t.Fatal("Create() called EnsureImage() for a config-level custom image; expected EnsureCustomImage()")
+	}
+	if got, want := customEnsured, configImage; got != want {
 		t.Fatalf("EnsureCustomImage() image = %q, want %q", got, want)
 	}
 }

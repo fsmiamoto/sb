@@ -183,7 +183,7 @@ func (m *SandboxManager) Create(ctx context.Context, opts CreateOptions) (Sandbo
 	}
 	imageName = normalizeImageName(imageName)
 
-	if opts.Image != "" {
+	if imageName != DefaultImageName {
 		if err := m.imageManager.EnsureCustomImage(ctx, imageName); err != nil {
 			return SandboxInfo{}, err
 		}
