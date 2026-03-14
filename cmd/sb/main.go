@@ -243,22 +243,16 @@ func attachCommand() *cli.Command {
 
 			ctx := context.Background()
 
-			var name, workspace string
+			var name string
 			if cCtx.NArg() > 0 {
 				resolved, err := resolveSandboxByName(ctx, mgr, cCtx.Args().First())
 				if err != nil {
 					return exitError("%v", err)
 				}
 				name = resolved.Name
-			} else {
-				cwd, err := os.Getwd()
-				if err != nil {
-					return exitError("get current directory: %v", err)
-				}
-				workspace = cwd
 			}
 
-			sb, err := mgr.Attach(ctx, name, workspace)
+			sb, err := mgr.Attach(ctx, name, "")
 			if err != nil {
 				return exitError("%v", err)
 			}
@@ -288,22 +282,16 @@ func stopCommand() *cli.Command {
 
 			ctx := context.Background()
 
-			var name, workspace string
+			var name string
 			if cCtx.NArg() > 0 {
 				resolved, err := resolveSandboxByName(ctx, mgr, cCtx.Args().First())
 				if err != nil {
 					return exitError("%v", err)
 				}
 				name = resolved.Name
-			} else {
-				cwd, err := os.Getwd()
-				if err != nil {
-					return exitError("get current directory: %v", err)
-				}
-				workspace = cwd
 			}
 
-			sb, err := mgr.Stop(ctx, name, workspace)
+			sb, err := mgr.Stop(ctx, name, "")
 			if err != nil {
 				return exitError("%v", err)
 			}
