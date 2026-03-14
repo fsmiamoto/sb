@@ -832,6 +832,159 @@ func TestSandboxManagerDestroyStopsAndRemovesContainerWhenConfirmed(t *testing.T
 	}
 }
 
+func TestDestroyUserCancels(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					return managedInspect("cid", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "running"), nil
+				},
+			}, nil
+		},
+	}
+
+	_, err := manager.Destroy(ctx, DestroyOptions{
+		Name: "sb-project-f630ad93",
+		Confirm: func(message string) bool {
+			return false // user says no
+		},
+	})
+	if err == nil {
+		t.Fatal("Destroy() expected error when user cancels")
+	}
+	if !strings.Contains(err.Error(), "cancelled by user") {
+		t.Fatalf("Destroy() error = %q, want 'cancelled by user'", err)
+	}
+}
+
+func TestDestroyNoConfirmFuncWithoutForce(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					return managedInspect("cid", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "running"), nil
+				},
+			}, nil
+		},
+	}
+
+	_, err := manager.Destroy(ctx, DestroyOptions{
+		Name: "sb-project-f630ad93",
+		// No Confirm func and Force is false
+	})
+	if err == nil {
+		t.Fatal("Destroy() expected error when no confirm func and not forced")
+	}
+	if !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("Destroy() error = %q, want '--force' hint", err)
+	}
+}
+
+func TestDestroyForceSkipsConfirmation(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	var removed bool
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					return managedInspect("cid", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "exited"), nil
+				},
+				stopFunc: func(ctx context.Context, containerID string, options containertypes.StopOptions) error {
+					return nil
+				},
+				removeFunc: func(ctx context.Context, containerID string, options containertypes.RemoveOptions) error {
+					removed = true
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	sb, err := manager.Destroy(ctx, DestroyOptions{
+		Name:  "sb-project-f630ad93",
+		Force: true,
+	})
+	if err != nil {
+		t.Fatalf("Destroy() error = %v", err)
+	}
+	if !removed {
+		t.Fatal("Destroy() container was not removed")
+	}
+	if sb.Name != "sb-project-f630ad93" {
+		t.Fatalf("Destroy() name = %q, want %q", sb.Name, "sb-project-f630ad93")
+	}
+}
+
+func TestDestroySandboxNotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+		getwd: func() (string, error) {
+			return "/tmp/project", nil
+		},
+	}
+
+	_, err := manager.Destroy(ctx, DestroyOptions{})
+	if err == nil {
+		t.Fatal("Destroy() expected error when sandbox not found")
+	}
+	if !strings.Contains(err.Error(), "Nothing to destroy") {
+		t.Fatalf("Destroy() error = %q, want 'Nothing to destroy'", err)
+	}
+}
+
+func TestDestroyClientError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return nil, errors.New("docker unavailable")
+		},
+	}
+
+	_, err := manager.Destroy(ctx, DestroyOptions{Name: "sb-test"})
+	if err == nil {
+		t.Fatal("Destroy() expected error on client failure")
+	}
+	if !strings.Contains(err.Error(), "docker unavailable") {
+		t.Fatalf("Destroy() error = %q, want 'docker unavailable'", err)
+	}
+}
+
+func TestFindSandboxesListError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				listFunc: func(ctx context.Context, options containertypes.ListOptions) ([]containertypes.Summary, error) {
+					return nil, errors.New("list failed")
+				},
+			}, nil
+		},
+	}
+
+	_, err := manager.FindSandboxes(ctx, "test")
+	if err == nil {
+		t.Fatal("FindSandboxes() expected error when List fails")
+	}
+	if !strings.Contains(err.Error(), "list failed") {
+		t.Fatalf("FindSandboxes() error = %q, want 'list failed'", err)
+	}
+}
+
 func TestSandboxManagerListAndFindSandboxesUseManagedContainerLabels(t *testing.T) {
 	ctx := context.Background()
 	listCalls := 0
