@@ -133,6 +133,166 @@ func TestMountBuilderBuildKeepsExpandedExtraMountTargetAsAbsolutePath(t *testing
 	}
 }
 
+func TestExpandHomePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "empty string",
+			path: "",
+			want: "",
+		},
+		{
+			name: "bare tilde",
+			path: "~",
+			want: home,
+		},
+		{
+			name: "tilde with forward slash",
+			path: "~/Documents/code",
+			want: filepath.Join(home, "Documents/code"),
+		},
+		{
+			name: "tilde with backslash",
+			path: "~\\.config",
+			want: filepath.Join(home, ".config"),
+		},
+		{
+			name: "absolute path unchanged",
+			path: "/usr/local/bin",
+			want: "/usr/local/bin",
+		},
+		{
+			name: "relative path unchanged",
+			path: "relative/path",
+			want: "relative/path",
+		},
+		{
+			name: "tilde in middle unchanged",
+			path: "/some/~/path",
+			want: "/some/~/path",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := expandHomePath(tc.path); got != tc.want {
+				t.Fatalf("expandHomePath(%q) = %q, want %q", tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExpandAndAbsPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	tests := []struct {
+		name    string
+		path    string
+		wantAbs bool
+	}{
+		{
+			name:    "tilde path becomes absolute",
+			path:    "~/projects",
+			wantAbs: true,
+		},
+		{
+			name:    "absolute path stays absolute",
+			path:    "/tmp/workspace",
+			wantAbs: true,
+		},
+		{
+			name:    "relative path becomes absolute",
+			path:    "some/relative",
+			wantAbs: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := expandAndAbsPath(tc.path)
+			if err != nil {
+				t.Fatalf("expandAndAbsPath(%q) error = %v", tc.path, err)
+			}
+			if tc.wantAbs && !filepath.IsAbs(got) {
+				t.Fatalf("expandAndAbsPath(%q) = %q, want absolute path", tc.path, got)
+			}
+		})
+	}
+
+	// Tilde is expanded before Abs
+	got, err := expandAndAbsPath("~/mydir")
+	if err != nil {
+		t.Fatalf("expandAndAbsPath(~/mydir) error = %v", err)
+	}
+	want := filepath.Join(home, "mydir")
+	if got != want {
+		t.Fatalf("expandAndAbsPath(~/mydir) = %q, want %q", got, want)
+	}
+}
+
+func TestBuildBindMount(t *testing.T) {
+	tests := []struct {
+		name     string
+		source   string
+		target   string
+		readOnly bool
+	}{
+		{
+			name:     "read-write mount",
+			source:   "/host/workspace",
+			target:   "/container/workspace",
+			readOnly: false,
+		},
+		{
+			name:     "read-only mount",
+			source:   "/host/.gitconfig",
+			target:   "/home/sandbox/.gitconfig",
+			readOnly: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := buildBindMount(tc.source, tc.target, tc.readOnly)
+			if got.Type != dockermount.TypeBind {
+				t.Fatalf("Type = %v, want TypeBind", got.Type)
+			}
+			if got.Source != tc.source {
+				t.Fatalf("Source = %q, want %q", got.Source, tc.source)
+			}
+			if got.Target != tc.target {
+				t.Fatalf("Target = %q, want %q", got.Target, tc.target)
+			}
+			if got.ReadOnly != tc.readOnly {
+				t.Fatalf("ReadOnly = %v, want %v", got.ReadOnly, tc.readOnly)
+			}
+		})
+	}
+}
+
+func TestPathExists(t *testing.T) {
+	dir := t.TempDir()
+	existingFile := filepath.Join(dir, "exists.txt")
+	mustWriteFile(t, existingFile, "hello")
+
+	if !pathExists(existingFile) {
+		t.Fatalf("pathExists(%q) = false, want true", existingFile)
+	}
+	if !pathExists(dir) {
+		t.Fatalf("pathExists(%q) = false, want true for directory", dir)
+	}
+	if pathExists(filepath.Join(dir, "nope.txt")) {
+		t.Fatal("pathExists(nonexistent) = true, want false")
+	}
+}
+
 func mustMkdirAll(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(path, 0o755); err != nil {
