@@ -308,16 +308,11 @@ func (m *SandboxManager) Stop(ctx context.Context, name string, workspace string
 func (m *SandboxManager) Destroy(ctx context.Context, opts DestroyOptions) (SandboxInfo, error) {
 	m.initDefaults()
 
-	resolvedWorkspace, err := m.resolveWorkspacePath(opts.Workspace)
-	if err != nil {
-		return SandboxInfo{}, err
-	}
-
 	sandbox, err := m.resolveSandbox(
 		ctx,
 		opts.Name,
 		opts.Workspace,
-		fmt.Sprintf("No sandbox found for workspace '%s'. Nothing to destroy.", resolvedWorkspace),
+		"No sandbox found for workspace '%s'. Nothing to destroy.",
 	)
 	if err != nil {
 		return SandboxInfo{}, err
@@ -508,9 +503,9 @@ func (m *SandboxManager) resolveSandbox(ctx context.Context, name string, worksp
 	}
 	if sandbox == nil {
 		if notFoundMessage == "" {
-			notFoundMessage = fmt.Sprintf("No sandbox found for workspace '%s'. Use 'sb create' to create one.", resolvedWorkspace)
+			notFoundMessage = "No sandbox found for workspace '%s'. Use 'sb create' to create one."
 		}
-		return SandboxInfo{}, errors.New(notFoundMessage)
+		return SandboxInfo{}, fmt.Errorf(notFoundMessage, resolvedWorkspace)
 	}
 
 	return *sandbox, nil

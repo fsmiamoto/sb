@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1662,12 +1663,13 @@ func TestResolveSandboxByWorkspaceNotFoundCustomMessage(t *testing.T) {
 		},
 	}
 
-	_, err := manager.resolveSandbox(ctx, "", workspace, "custom not found message")
+	_, err := manager.resolveSandbox(ctx, "", workspace, "No sandbox found for workspace '%s'. Nothing to destroy.")
 	if err == nil {
 		t.Fatal("resolveSandbox() error = nil, want error")
 	}
-	if err.Error() != "custom not found message" {
-		t.Fatalf("error = %q, want %q", err.Error(), "custom not found message")
+	wantMessage := fmt.Sprintf("No sandbox found for workspace '%s'. Nothing to destroy.", workspace)
+	if err.Error() != wantMessage {
+		t.Fatalf("error = %q, want %q", err.Error(), wantMessage)
 	}
 }
 
