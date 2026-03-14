@@ -389,6 +389,406 @@ func TestSandboxManagerCreateRejectsSensitiveWorkspaceWithoutForce(t *testing.T)
 	}
 }
 
+func TestCreateWorkspaceResolutionError(t *testing.T) {
+	t.Parallel()
+	manager := &SandboxManager{
+		getwd: func() (string, error) { return "", errors.New("cwd gone") },
+	}
+	_, err := manager.Create(context.Background(), CreateOptions{})
+	if err == nil || !strings.Contains(err.Error(), "cwd gone") {
+		t.Fatalf("Create() error = %v, want cwd error", err)
+	}
+}
+
+func TestCreateGetSandboxClientError(t *testing.T) {
+	t.Parallel()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return nil, errors.New("docker down")
+		},
+	}
+	_, err := manager.Create(context.Background(), CreateOptions{Workspace: "/tmp/project"})
+	if err == nil || !strings.Contains(err.Error(), "docker down") {
+		t.Fatalf("Create() error = %v, want docker down", err)
+	}
+}
+
+func TestCreateExistingConfirmCancels(t *testing.T) {
+	t.Parallel()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
+					return managedInspect("id1", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "running"), nil
+				},
+			}, nil
+		},
+	}
+	_, err := manager.Create(context.Background(), CreateOptions{
+		Workspace: "/tmp/project",
+		Confirm:   func(string) bool { return false },
+	})
+	if err == nil || !strings.Contains(err.Error(), "cancelled by user") {
+		t.Fatalf("Create() error = %v, want cancelled", err)
+	}
+}
+
+func TestCreateForceRecreatesExisting(t *testing.T) {
+	t.Parallel()
+	var removedID string
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
+					if id == "old-id" {
+						// destroyContainer inspects it — return stopped
+						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "exited"), nil
+					}
+					if id == "sb-project-f630ad93" {
+						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "exited"), nil
+					}
+					// post-create inspect
+					return managedInspect("new-id", "sb-project-f630ad93", "/tmp/project", "2026-03-15T00:00:00Z", "created"), nil
+				},
+				removeFunc: func(_ context.Context, id string, _ containertypes.RemoveOptions) error {
+					removedID = id
+					return nil
+				},
+				createFunc: func(_ context.Context, _ *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, _ string) (containertypes.CreateResponse, error) {
+					return containertypes.CreateResponse{ID: "new-id"}, nil
+				},
+			}, nil
+		},
+		imageManager:       &fakeManagerImageManager{},
+		mountBuilder:       &fakeManagerMountBuilder{},
+		ensureShellConfigs: func() error { return nil },
+	}
+	sandbox, err := manager.Create(context.Background(), CreateOptions{
+		Workspace: "/tmp/project",
+		Force:     true,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if removedID != "old-id" {
+		t.Fatalf("removed container = %q, want %q", removedID, "old-id")
+	}
+	if sandbox.ContainerID == nil || *sandbox.ContainerID != "new-id" {
+		t.Fatalf("sandbox container ID = %v, want %q", sandbox.ContainerID, "new-id")
+	}
+}
+
+func TestCreateDestroyContainerErrorDuringRecreate(t *testing.T) {
+	t.Parallel()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
+					if id == "old-id" {
+						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "running"), nil
+					}
+					return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "running"), nil
+				},
+				stopFunc: func(_ context.Context, _ string, _ containertypes.StopOptions) error {
+					return nil
+				},
+				removeFunc: func(_ context.Context, _ string, _ containertypes.RemoveOptions) error {
+					return errors.New("remove failed")
+				},
+			}, nil
+		},
+	}
+	_, err := manager.Create(context.Background(), CreateOptions{
+		Workspace: "/tmp/project",
+		Force:     true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "remove failed") {
+		t.Fatalf("Create() error = %v, want remove failed", err)
+	}
+}
+
+func TestCreateSensitiveDirConfirmCancels(t *testing.T) {
+	t.Parallel()
+	manager := &SandboxManager{
+		customSensitiveDirs: []string{"/tmp/project"},
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+	}
+	_, err := manager.Create(context.Background(), CreateOptions{
+		Workspace: "/tmp/project",
+		Confirm:   func(string) bool { return false },
+	})
+	if err == nil || !strings.Contains(err.Error(), "cancelled by user") {
+		t.Fatalf("Create() error = %v, want cancelled", err)
+	}
+}
+
+func TestCreateSensitiveDirConfirmProceeds(t *testing.T) {
+	t.Parallel()
+	manager := &SandboxManager{
+		customSensitiveDirs: []string{"/tmp/project"},
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
+					if id == "sb-project-f630ad93" {
+						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+					}
+					return managedInspect("new-id", "sb-project-f630ad93", "/tmp/project", "2026-03-15T00:00:00Z", "created"), nil
+				},
+				createFunc: func(_ context.Context, _ *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, _ string) (containertypes.CreateResponse, error) {
+					return containertypes.CreateResponse{ID: "new-id"}, nil
+				},
+			}, nil
+		},
+		imageManager:       &fakeManagerImageManager{},
+		mountBuilder:       &fakeManagerMountBuilder{},
+		ensureShellConfigs: func() error { return nil },
+	}
+	sandbox, err := manager.Create(context.Background(), CreateOptions{
+		Workspace: "/tmp/project",
+		Confirm:   func(string) bool { return true },
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if sandbox.Name != "sb-project-f630ad93" {
+		t.Fatalf("Name = %q, want sb-project-f630ad93", sandbox.Name)
+	}
+}
+
+func TestCreateEnsureShellConfigsError(t *testing.T) {
+	t.Parallel()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+		ensureShellConfigs: func() error { return errors.New("config write failed") },
+	}
+	_, err := manager.Create(context.Background(), CreateOptions{Workspace: "/tmp/project"})
+	if err == nil || !strings.Contains(err.Error(), "config write failed") {
+		t.Fatalf("Create() error = %v, want config write failed", err)
+	}
+}
+
+func TestCreateEnsureImageError(t *testing.T) {
+	t.Parallel()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+		imageManager: &fakeManagerImageManager{
+			ensureImageFunc: func(context.Context, string) error {
+				return errors.New("build failed")
+			},
+		},
+		ensureShellConfigs: func() error { return nil },
+	}
+	_, err := manager.Create(context.Background(), CreateOptions{Workspace: "/tmp/project"})
+	if err == nil || !strings.Contains(err.Error(), "build failed") {
+		t.Fatalf("Create() error = %v, want build failed", err)
+	}
+}
+
+func TestCreateEnsureCustomImageError(t *testing.T) {
+	t.Parallel()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+		imageManager: &fakeManagerImageManager{
+			ensureCustomImageFunc: func(context.Context, string) error {
+				return errors.New("pull failed")
+			},
+		},
+		ensureShellConfigs: func() error { return nil },
+	}
+	_, err := manager.Create(context.Background(), CreateOptions{
+		Workspace: "/tmp/project",
+		Image:     "custom:latest",
+	})
+	if err == nil || !strings.Contains(err.Error(), "pull failed") {
+		t.Fatalf("Create() error = %v, want pull failed", err)
+	}
+}
+
+func TestCreateMountBuilderError(t *testing.T) {
+	t.Parallel()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+		imageManager: &fakeManagerImageManager{},
+		mountBuilder: &fakeManagerMountBuilder{
+			buildFunc: func(string, []string) ([]mount.Mount, []string, error) {
+				return nil, nil, errors.New("mount build error")
+			},
+		},
+		ensureShellConfigs: func() error { return nil },
+	}
+	_, err := manager.Create(context.Background(), CreateOptions{Workspace: "/tmp/project"})
+	if err == nil || !strings.Contains(err.Error(), "mount build error") {
+		t.Fatalf("Create() error = %v, want mount build error", err)
+	}
+}
+
+func TestCreateContainerCreateError(t *testing.T) {
+	t.Parallel()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+				},
+				createFunc: func(_ context.Context, _ *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, _ string) (containertypes.CreateResponse, error) {
+					return containertypes.CreateResponse{}, errors.New("create failed")
+				},
+			}, nil
+		},
+		imageManager:       &fakeManagerImageManager{},
+		mountBuilder:       &fakeManagerMountBuilder{},
+		ensureShellConfigs: func() error { return nil },
+	}
+	_, err := manager.Create(context.Background(), CreateOptions{Workspace: "/tmp/project"})
+	if err == nil || !strings.Contains(err.Error(), "create failed") {
+		t.Fatalf("Create() error = %v, want create failed", err)
+	}
+}
+
+func TestCreatePostCreateInspectError(t *testing.T) {
+	t.Parallel()
+	inspectCount := 0
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
+					inspectCount++
+					if inspectCount == 1 {
+						// getSandbox lookup — not found
+						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+					}
+					// post-create inspect fails
+					return containertypes.InspectResponse{}, errors.New("inspect failed")
+				},
+				createFunc: func(_ context.Context, _ *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, _ string) (containertypes.CreateResponse, error) {
+					return containertypes.CreateResponse{ID: "new-id"}, nil
+				},
+			}, nil
+		},
+		imageManager:       &fakeManagerImageManager{},
+		mountBuilder:       &fakeManagerMountBuilder{},
+		ensureShellConfigs: func() error { return nil },
+	}
+	_, err := manager.Create(context.Background(), CreateOptions{Workspace: "/tmp/project"})
+	if err == nil || !strings.Contains(err.Error(), "inspect newly created") {
+		t.Fatalf("Create() error = %v, want inspect error", err)
+	}
+}
+
+func TestCreateWithCustomName(t *testing.T) {
+	t.Parallel()
+	var createdName string
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
+					if id == "my-sandbox" {
+						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+					}
+					return managedInspect("new-id", "my-sandbox", "/tmp/project", "2026-03-15T00:00:00Z", "created"), nil
+				},
+				createFunc: func(_ context.Context, _ *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, name string) (containertypes.CreateResponse, error) {
+					createdName = name
+					return containertypes.CreateResponse{ID: "new-id"}, nil
+				},
+			}, nil
+		},
+		imageManager:       &fakeManagerImageManager{},
+		mountBuilder:       &fakeManagerMountBuilder{},
+		ensureShellConfigs: func() error { return nil },
+	}
+	sandbox, err := manager.Create(context.Background(), CreateOptions{
+		Workspace: "/tmp/project",
+		Name:      "my-sandbox",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if createdName != "my-sandbox" {
+		t.Fatalf("container name = %q, want %q", createdName, "my-sandbox")
+	}
+	if sandbox.Name != "my-sandbox" {
+		t.Fatalf("sandbox name = %q, want %q", sandbox.Name, "my-sandbox")
+	}
+}
+
+func TestCreateExistingConfirmProceeds(t *testing.T) {
+	t.Parallel()
+	var destroyed, created bool
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
+					if id == "old-id" {
+						// destroyContainer inspect — return stopped so no stop needed
+						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "exited"), nil
+					}
+					if !created {
+						// getSandbox — existing sandbox
+						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "running"), nil
+					}
+					// post-create inspect
+					return managedInspect("new-id", "sb-project-f630ad93", "/tmp/project", "2026-03-15T00:00:00Z", "created"), nil
+				},
+				removeFunc: func(_ context.Context, _ string, _ containertypes.RemoveOptions) error {
+					destroyed = true
+					return nil
+				},
+				createFunc: func(_ context.Context, _ *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, _ string) (containertypes.CreateResponse, error) {
+					created = true
+					return containertypes.CreateResponse{ID: "new-id"}, nil
+				},
+			}, nil
+		},
+		imageManager:       &fakeManagerImageManager{},
+		mountBuilder:       &fakeManagerMountBuilder{},
+		ensureShellConfigs: func() error { return nil },
+	}
+	sandbox, err := manager.Create(context.Background(), CreateOptions{
+		Workspace: "/tmp/project",
+		Confirm:   func(string) bool { return true },
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if !destroyed {
+		t.Fatal("expected old container to be destroyed")
+	}
+	if sandbox.ContainerID == nil || *sandbox.ContainerID != "new-id" {
+		t.Fatalf("container ID = %v, want new-id", sandbox.ContainerID)
+	}
+}
+
 func TestSandboxManagerAttachStartsStoppedSandbox(t *testing.T) {
 	ctx := context.Background()
 	startedIDs := make([]string, 0)
