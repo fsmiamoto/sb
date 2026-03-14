@@ -426,6 +426,323 @@ func TestSandboxManagerAttachStartsStoppedSandbox(t *testing.T) {
 	}
 }
 
+func TestAttachAlreadyRunningSkipsStart(t *testing.T) {
+	ctx := context.Background()
+	startCalled := false
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, containerID string) (containertypes.InspectResponse, error) {
+					return managedInspect("cid-1", "sb-proj-abc12345", "/tmp/proj", "2026-03-08T10:00:00Z", "running"), nil
+				},
+				startFunc: func(_ context.Context, _ string, _ containertypes.StartOptions) error {
+					startCalled = true
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	sb, err := manager.Attach(ctx, "sb-proj-abc12345", "")
+	if err != nil {
+		t.Fatalf("Attach() error = %v", err)
+	}
+	if startCalled {
+		t.Fatal("Attach() should not start an already-running container")
+	}
+	if sb.Name != "sb-proj-abc12345" {
+		t.Fatalf("Attach() name = %q, want %q", sb.Name, "sb-proj-abc12345")
+	}
+}
+
+func TestAttachNoContainerID(t *testing.T) {
+	ctx := context.Background()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, containerID string) (containertypes.InspectResponse, error) {
+					// Return a sandbox with nil ContainerJSONBase → nil ContainerID.
+					return containertypes.InspectResponse{
+						ContainerJSONBase: &containertypes.ContainerJSONBase{
+							Name:    "/sb-proj-abc12345",
+							Created: "2026-03-08T10:00:00Z",
+							State:   &containertypes.State{Status: "running"},
+						},
+						Config: &containertypes.Config{
+							Labels: map[string]string{
+								managedLabelKey:   managedLabelValue,
+								nameLabelKey:      "sb-proj-abc12345",
+								workspaceLabelKey: "/tmp/proj",
+							},
+						},
+					}, nil
+				},
+			}, nil
+		},
+	}
+
+	_, err := manager.Attach(ctx, "sb-proj-abc12345", "")
+	if err == nil {
+		t.Fatal("Attach() expected error for sandbox with no container ID")
+	}
+	if !strings.Contains(err.Error(), "no container ID") {
+		t.Fatalf("Attach() error = %q, want mention of 'no container ID'", err)
+	}
+}
+
+func TestAttachSandboxNotFound(t *testing.T) {
+	ctx := context.Background()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+	}
+
+	_, err := manager.Attach(ctx, "sb-nonexistent-12345678", "")
+	if err == nil {
+		t.Fatal("Attach() expected error for nonexistent sandbox")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("Attach() error = %q, want mention of 'not found'", err)
+	}
+}
+
+func TestAttachClientError(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("docker unavailable")
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return nil, wantErr
+		},
+	}
+
+	_, err := manager.Attach(ctx, "sb-proj-abc12345", "")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Attach() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestAttachStartError(t *testing.T) {
+	ctx := context.Background()
+	startErr := errors.New("cannot start container")
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return managedInspect("cid-1", "sb-proj-abc12345", "/tmp/proj", "2026-03-08T10:00:00Z", "exited"), nil
+				},
+				startFunc: func(_ context.Context, _ string, _ containertypes.StartOptions) error {
+					return startErr
+				},
+			}, nil
+		},
+	}
+
+	_, err := manager.Attach(ctx, "sb-proj-abc12345", "")
+	if err == nil {
+		t.Fatal("Attach() expected error when start fails")
+	}
+	if !strings.Contains(err.Error(), "start sandbox") {
+		t.Fatalf("Attach() error = %q, want mention of 'start sandbox'", err)
+	}
+}
+
+func TestAttachResolvesFromWorkspace(t *testing.T) {
+	ctx := context.Background()
+	startedIDs := make([]string, 0)
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, containerID string) (containertypes.InspectResponse, error) {
+					switch containerID {
+					case "sb-project-f630ad93", "cid-1":
+						return managedInspect("cid-1", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "exited"), nil
+					default:
+						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+					}
+				},
+				startFunc: func(_ context.Context, containerID string, _ containertypes.StartOptions) error {
+					startedIDs = append(startedIDs, containerID)
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	sb, err := manager.Attach(ctx, "", "/tmp/project")
+	if err != nil {
+		t.Fatalf("Attach() error = %v", err)
+	}
+	if !reflect.DeepEqual(startedIDs, []string{"cid-1"}) {
+		t.Fatalf("Attach() started IDs = %v, want %v", startedIDs, []string{"cid-1"})
+	}
+	if sb.Workspace != "/tmp/project" {
+		t.Fatalf("Attach() workspace = %q, want %q", sb.Workspace, "/tmp/project")
+	}
+}
+
+func TestStopAlreadyStoppedSkipsStop(t *testing.T) {
+	ctx := context.Background()
+	stopCalled := false
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return managedInspect("cid-1", "sb-proj-abc12345", "/tmp/proj", "2026-03-08T10:00:00Z", "exited"), nil
+				},
+				stopFunc: func(_ context.Context, _ string, _ containertypes.StopOptions) error {
+					stopCalled = true
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	sb, err := manager.Stop(ctx, "sb-proj-abc12345", "")
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if stopCalled {
+		t.Fatal("Stop() should not stop an already-stopped container")
+	}
+	if sb.Name != "sb-proj-abc12345" {
+		t.Fatalf("Stop() name = %q, want %q", sb.Name, "sb-proj-abc12345")
+	}
+}
+
+func TestStopNoContainerID(t *testing.T) {
+	ctx := context.Background()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{
+						ContainerJSONBase: &containertypes.ContainerJSONBase{
+							Name:    "/sb-proj-abc12345",
+							Created: "2026-03-08T10:00:00Z",
+							State:   &containertypes.State{Status: "running"},
+						},
+						Config: &containertypes.Config{
+							Labels: map[string]string{
+								managedLabelKey:   managedLabelValue,
+								nameLabelKey:      "sb-proj-abc12345",
+								workspaceLabelKey: "/tmp/proj",
+							},
+						},
+					}, nil
+				},
+			}, nil
+		},
+	}
+
+	_, err := manager.Stop(ctx, "sb-proj-abc12345", "")
+	if err == nil {
+		t.Fatal("Stop() expected error for sandbox with no container ID")
+	}
+	if !strings.Contains(err.Error(), "no container ID") {
+		t.Fatalf("Stop() error = %q, want mention of 'no container ID'", err)
+	}
+}
+
+func TestStopSandboxNotFound(t *testing.T) {
+	ctx := context.Background()
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+	}
+
+	_, err := manager.Stop(ctx, "sb-nonexistent-12345678", "")
+	if err == nil {
+		t.Fatal("Stop() expected error for nonexistent sandbox")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("Stop() error = %q, want mention of 'not found'", err)
+	}
+}
+
+func TestStopClientError(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("docker unavailable")
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return nil, wantErr
+		},
+	}
+
+	_, err := manager.Stop(ctx, "sb-proj-abc12345", "")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Stop() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestStopStopError(t *testing.T) {
+	ctx := context.Background()
+	stopErr := errors.New("cannot stop container")
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return managedInspect("cid-1", "sb-proj-abc12345", "/tmp/proj", "2026-03-08T10:00:00Z", "running"), nil
+				},
+				stopFunc: func(_ context.Context, _ string, _ containertypes.StopOptions) error {
+					return stopErr
+				},
+			}, nil
+		},
+	}
+
+	_, err := manager.Stop(ctx, "sb-proj-abc12345", "")
+	if err == nil {
+		t.Fatal("Stop() expected error when stop fails")
+	}
+	if !strings.Contains(err.Error(), "stop sandbox") {
+		t.Fatalf("Stop() error = %q, want mention of 'stop sandbox'", err)
+	}
+}
+
+func TestStopResolvesByName(t *testing.T) {
+	ctx := context.Background()
+	stoppedIDs := make([]string, 0)
+	manager := &SandboxManager{
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(_ context.Context, containerID string) (containertypes.InspectResponse, error) {
+					switch containerID {
+					case "sb-proj-abc12345", "cid-1":
+						return managedInspect("cid-1", "sb-proj-abc12345", "/tmp/proj", "2026-03-08T10:00:00Z", "running"), nil
+					default:
+						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+					}
+				},
+				stopFunc: func(_ context.Context, containerID string, _ containertypes.StopOptions) error {
+					stoppedIDs = append(stoppedIDs, containerID)
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	sb, err := manager.Stop(ctx, "sb-proj-abc12345", "")
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if !reflect.DeepEqual(stoppedIDs, []string{"cid-1"}) {
+		t.Fatalf("Stop() stopped IDs = %v, want %v", stoppedIDs, []string{"cid-1"})
+	}
+	if sb.Name != "sb-proj-abc12345" {
+		t.Fatalf("Stop() name = %q, want %q", sb.Name, "sb-proj-abc12345")
+	}
+}
+
 func TestSandboxManagerStopStopsRunningSandboxResolvedFromWorkspace(t *testing.T) {
 	ctx := context.Background()
 	stoppedIDs := make([]string, 0)
