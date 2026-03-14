@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -987,6 +988,198 @@ func TestNormalizeImageName(t *testing.T) {
 
 	if got := normalizeImageName("custom:v1"); got != "custom:v1" {
 		t.Fatalf("normalizeImageName(\"custom:v1\") = %q, want %q", got, "custom:v1")
+	}
+}
+
+func TestResolveWorkspacePath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		workspace string
+		getwd     func() (string, error)
+		want      string
+		wantErr   string
+	}{
+		{
+			name:      "explicit absolute path is returned as-is",
+			workspace: "/home/user/project",
+			want:      "/home/user/project",
+		},
+		{
+			name:      "empty workspace falls back to getwd",
+			workspace: "",
+			getwd:     func() (string, error) { return "/home/user/default-dir", nil },
+			want:      "/home/user/default-dir",
+		},
+		{
+			name:      "empty workspace with getwd error",
+			workspace: "",
+			getwd:     func() (string, error) { return "", errors.New("no cwd") },
+			wantErr:   "get current working directory",
+		},
+		{
+			name:      "tilde path is expanded",
+			workspace: "~/projects/myapp",
+			want:      "/projects/myapp", // expandHomePath resolves ~ to home
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			manager := &SandboxManager{
+				getwd: tc.getwd,
+			}
+			if manager.getwd == nil {
+				manager.getwd = func() (string, error) { return "/fallback", nil }
+			}
+
+			got, err := manager.resolveWorkspacePath(tc.workspace)
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatalf("resolveWorkspacePath() error = nil, want error containing %q", tc.wantErr)
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("resolveWorkspacePath() error = %q, want error containing %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveWorkspacePath() error = %v", err)
+			}
+			// For tilde paths, just check the suffix since home dir varies
+			if tc.workspace != "" && strings.HasPrefix(tc.workspace, "~") {
+				if !strings.HasSuffix(got, "/projects/myapp") {
+					t.Fatalf("resolveWorkspacePath() = %q, want suffix %q", got, "/projects/myapp")
+				}
+				return
+			}
+			if got != tc.want {
+				t.Fatalf("resolveWorkspacePath() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheckSensitiveDir(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                string
+		path                string
+		customSensitiveDirs []string
+		wantSensitive       bool
+		wantErr             bool
+	}{
+		{
+			name:          "root directory is sensitive",
+			path:          "/",
+			wantSensitive: true,
+		},
+		{
+			name:          "/etc is sensitive",
+			path:          "/etc",
+			wantSensitive: true,
+		},
+		{
+			name:          "/var is sensitive",
+			path:          "/var",
+			wantSensitive: true,
+		},
+		{
+			name:          "/usr is sensitive",
+			path:          "/usr",
+			wantSensitive: true,
+		},
+		{
+			name:          "/bin is sensitive",
+			path:          "/bin",
+			wantSensitive: true,
+		},
+		{
+			name:          "/sbin is sensitive",
+			path:          "/sbin",
+			wantSensitive: true,
+		},
+		{
+			name:          "regular project directory is not sensitive",
+			path:          "/tmp/my-project",
+			wantSensitive: false,
+		},
+		{
+			name:          "subdirectory of sensitive dir is not sensitive",
+			path:          "/etc/nginx",
+			wantSensitive: false,
+		},
+		{
+			name:                "custom sensitive dir is detected",
+			path:                "/opt/secrets",
+			customSensitiveDirs: []string{"/opt/secrets"},
+			wantSensitive:       true,
+		},
+		{
+			name:                "non-matching custom sensitive dir",
+			path:                "/opt/safe",
+			customSensitiveDirs: []string{"/opt/secrets"},
+			wantSensitive:       false,
+		},
+		{
+			name:                "multiple custom sensitive dirs",
+			path:                "/data/important",
+			customSensitiveDirs: []string{"/opt/secrets", "/data/important"},
+			wantSensitive:       true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			manager := &SandboxManager{
+				customSensitiveDirs: tc.customSensitiveDirs,
+			}
+
+			sensitivePath, isSensitive, err := manager.checkSensitiveDir(tc.path)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("checkSensitiveDir() error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("checkSensitiveDir() error = %v", err)
+			}
+			if isSensitive != tc.wantSensitive {
+				t.Fatalf("checkSensitiveDir() sensitive = %v, want %v", isSensitive, tc.wantSensitive)
+			}
+			if isSensitive && sensitivePath == "" {
+				t.Fatal("checkSensitiveDir() returned sensitive=true but empty path")
+			}
+			if !isSensitive && sensitivePath != "" {
+				t.Fatalf("checkSensitiveDir() returned sensitive=false but path = %q", sensitivePath)
+			}
+		})
+	}
+}
+
+func TestCheckSensitiveDirDetectsHomeDirectory(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("cannot determine home directory")
+	}
+
+	manager := &SandboxManager{}
+	sensitivePath, isSensitive, err := manager.checkSensitiveDir(home)
+	if err != nil {
+		t.Fatalf("checkSensitiveDir(home) error = %v", err)
+	}
+	if !isSensitive {
+		t.Fatal("checkSensitiveDir(home) = false, want true (home directory should be sensitive)")
+	}
+	if sensitivePath != home {
+		t.Fatalf("checkSensitiveDir(home) path = %q, want %q", sensitivePath, home)
 	}
 }
 
