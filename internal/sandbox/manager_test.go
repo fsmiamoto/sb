@@ -583,6 +583,95 @@ func TestSandboxManagerGetContainerStatusHandlesRunningAndMissingContainers(t *t
 	}
 }
 
+func TestSandboxManagerBuildEnvironment(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		envPassthrough []string
+		extraEnvVars   []string
+		getenv         func(string) string
+		uid, gid       int
+		want           []string
+	}{
+		{
+			name: "only UID and GID when no extra vars",
+			uid:  1000, gid: 1001,
+			want: []string{"HOST_GID=1001", "HOST_UID=1000"},
+		},
+		{
+			name:         "explicit KEY=VALUE vars are included",
+			extraEnvVars: []string{"FOO=bar", "BAZ=qux"},
+			uid:          1000, gid: 1001,
+			want: []string{"BAZ=qux", "FOO=bar", "HOST_GID=1001", "HOST_UID=1000"},
+		},
+		{
+			name:           "passthrough vars resolved from environment",
+			envPassthrough: []string{"MY_TOKEN"},
+			getenv:         func(key string) string { return map[string]string{"MY_TOKEN": "secret"}[key] },
+			uid:            500, gid: 500,
+			want: []string{"HOST_GID=500", "HOST_UID=500", "MY_TOKEN=secret"},
+		},
+		{
+			name:           "empty passthrough vars are excluded",
+			envPassthrough: []string{"UNSET_VAR"},
+			getenv:         func(string) string { return "" },
+			uid:            1000, gid: 1000,
+			want: []string{"HOST_GID=1000", "HOST_UID=1000"},
+		},
+		{
+			name:           "extra vars override passthrough",
+			envPassthrough: []string{"TOKEN"},
+			extraEnvVars:   []string{"TOKEN=override"},
+			getenv:         func(key string) string { return map[string]string{"TOKEN": "from-env"}[key] },
+			uid:            1000, gid: 1000,
+			want: []string{"HOST_GID=1000", "HOST_UID=1000", "TOKEN=override"},
+		},
+		{
+			name:           "passthrough and explicit are merged and sorted",
+			envPassthrough: []string{"ALPHA"},
+			extraEnvVars:   []string{"ZEBRA=last", "MIDDLE=mid"},
+			getenv:         func(key string) string { return map[string]string{"ALPHA": "first"}[key] },
+			uid:            0, gid: 0,
+			want: []string{"ALPHA=first", "HOST_GID=0", "HOST_UID=0", "MIDDLE=mid", "ZEBRA=last"},
+		},
+		{
+			name:         "explicit KEY=VALUE can override HOST_UID",
+			extraEnvVars: []string{"HOST_UID=9999"},
+			uid:          1000, gid: 1000,
+			want: []string{"HOST_GID=1000", "HOST_UID=9999"},
+		},
+		{
+			name:         "empty value in KEY= format is preserved",
+			extraEnvVars: []string{"EMPTY="},
+			uid:          1000, gid: 1000,
+			want: []string{"EMPTY=", "HOST_GID=1000", "HOST_UID=1000"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			getenv := tc.getenv
+			if getenv == nil {
+				getenv = func(string) string { return "" }
+			}
+
+			manager := &SandboxManager{
+				envPassthrough: tc.envPassthrough,
+				getUIDGID:      func() (int, int) { return tc.uid, tc.gid },
+				getenv:         getenv,
+			}
+
+			got := manager.buildEnvironment(tc.extraEnvVars)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("buildEnvironment() = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSandboxInfoFromInspect(t *testing.T) {
 	t.Parallel()
 
