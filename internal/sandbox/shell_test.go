@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -221,6 +223,189 @@ func TestSandboxManagerCreateUsesRealShellConfigManagerByDefault(t *testing.T) {
 			t.Fatalf("Create() mount[%d].Source = %q, want %q", index, got, want)
 		}
 	}
+}
+
+func TestShellConfigManagerEnsureConfigsMkdirAllError(t *testing.T) {
+	t.Parallel()
+	manager := NewShellConfigManager("/some/config/dir")
+	manager.defaultsFS = fstest.MapFS{
+		"zshrc": {Data: []byte("test\n"), Mode: 0o644},
+	}
+	manager.mkdirAll = func(string, os.FileMode) error {
+		return os.ErrPermission
+	}
+
+	err := manager.EnsureConfigs()
+	if err == nil {
+		t.Fatal("EnsureConfigs() error = nil, want mkdirAll error")
+	}
+	if got := err.Error(); !strings.Contains(got, "create shell config directory") {
+		t.Fatalf("EnsureConfigs() error = %q, want 'create shell config directory' prefix", got)
+	}
+}
+
+func TestShellConfigManagerEnsureConfigsCopyFileReadError(t *testing.T) {
+	t.Parallel()
+	configDir := t.TempDir()
+
+	// Use an FS where ReadFile will fail for zshrc.
+	// fstest.MapFS returns an error for files not in the map, so we use
+	// a custom FS that fails on open.
+	manager := NewShellConfigManager(configDir)
+	manager.defaultsFS = &failReadFS{failName: "zshrc"}
+
+	err := manager.EnsureConfigs()
+	if err == nil {
+		t.Fatal("EnsureConfigs() error = nil, want ReadFile error")
+	}
+	if got := err.Error(); !strings.Contains(got, "read default shell config") {
+		t.Fatalf("EnsureConfigs() error = %q, want 'read default shell config' prefix", got)
+	}
+}
+
+func TestShellConfigManagerCopyFileWriteError(t *testing.T) {
+	t.Parallel()
+	configDir := t.TempDir()
+
+	manager := NewShellConfigManager(configDir)
+	manager.defaultsFS = fstest.MapFS{
+		"zshrc":         {Data: []byte("test\n"), Mode: 0o644},
+		"starship.toml": {Data: []byte("format = '$all'\n"), Mode: 0o644},
+		"nvim/init.lua": {Data: []byte("init\n"), Mode: 0o644},
+	}
+	manager.writeFile = func(string, []byte, os.FileMode) error {
+		return os.ErrPermission
+	}
+
+	err := manager.EnsureConfigs()
+	if err == nil {
+		t.Fatal("EnsureConfigs() error = nil, want writeFile error")
+	}
+	if got := err.Error(); !strings.Contains(got, "write shell config") {
+		t.Fatalf("EnsureConfigs() error = %q, want 'write shell config' prefix", got)
+	}
+}
+
+func TestShellConfigManagerCopyFileFallbackMode(t *testing.T) {
+	t.Parallel()
+	configDir := t.TempDir()
+
+	// Mode 0 in MapFS should trigger the fallback to 0o644
+	manager := NewShellConfigManager(configDir)
+	manager.defaultsFS = fstest.MapFS{
+		"zshrc":         {Data: []byte("test\n"), Mode: 0},
+		"starship.toml": {Data: []byte("toml\n"), Mode: 0o644},
+		"nvim/init.lua": {Data: []byte("init\n"), Mode: 0o644},
+	}
+
+	var writtenMode os.FileMode
+	manager.writeFile = func(name string, data []byte, mode os.FileMode) error {
+		if filepath.Base(name) == "zshrc" {
+			writtenMode = mode
+		}
+		return os.WriteFile(name, data, mode)
+	}
+
+	if err := manager.EnsureConfigs(); err != nil {
+		t.Fatalf("EnsureConfigs() error = %v", err)
+	}
+	if got, want := writtenMode, os.FileMode(0o644); got != want {
+		t.Fatalf("copyFile() mode = %v, want fallback %v", got, want)
+	}
+}
+
+func TestShellConfigManagerCopyDirectoryMkdirAllError(t *testing.T) {
+	t.Parallel()
+	configDir := t.TempDir()
+
+	manager := NewShellConfigManager(configDir)
+	manager.defaultsFS = fstest.MapFS{
+		"zshrc":         {Data: []byte("test\n"), Mode: 0o644},
+		"starship.toml": {Data: []byte("toml\n"), Mode: 0o644},
+		"nvim/init.lua": {Data: []byte("init\n"), Mode: 0o644},
+	}
+
+	// mkdirAll succeeds for the config dir itself but fails for the nvim subdirectory
+	callCount := 0
+	manager.mkdirAll = func(path string, mode os.FileMode) error {
+		callCount++
+		if callCount > 1 {
+			return os.ErrPermission
+		}
+		return os.MkdirAll(path, mode)
+	}
+
+	err := manager.EnsureConfigs()
+	if err == nil {
+		t.Fatal("EnsureConfigs() error = nil, want mkdirAll error for nvim directory")
+	}
+}
+
+func TestShellConfigManagerCopyDirectoryCopyFSError(t *testing.T) {
+	t.Parallel()
+	configDir := t.TempDir()
+
+	manager := NewShellConfigManager(configDir)
+	manager.defaultsFS = fstest.MapFS{
+		"zshrc":         {Data: []byte("test\n"), Mode: 0o644},
+		"starship.toml": {Data: []byte("toml\n"), Mode: 0o644},
+		"nvim/init.lua": {Data: []byte("init\n"), Mode: 0o644},
+	}
+	manager.copyFS = func(string, fs.FS) error {
+		return os.ErrPermission
+	}
+
+	err := manager.EnsureConfigs()
+	if err == nil {
+		t.Fatal("EnsureConfigs() error = nil, want copyFS error")
+	}
+	if got := err.Error(); !strings.Contains(got, "copy default shell config directory") {
+		t.Fatalf("EnsureConfigs() error = %q, want 'copy default shell config directory' prefix", got)
+	}
+}
+
+func TestShellConfigManagerCopyFileMkdirAllParentError(t *testing.T) {
+	t.Parallel()
+	configDir := t.TempDir()
+
+	manager := NewShellConfigManager(configDir)
+	manager.defaultsFS = fstest.MapFS{
+		"zshrc":         {Data: []byte("test\n"), Mode: 0o644},
+		"starship.toml": {Data: []byte("toml\n"), Mode: 0o644},
+		"nvim/init.lua": {Data: []byte("init\n"), Mode: 0o644},
+	}
+
+	// mkdirAll succeeds for config dir but fails for parent directory of the file
+	callCount := 0
+	origMkdirAll := os.MkdirAll
+	manager.mkdirAll = func(path string, mode os.FileMode) error {
+		callCount++
+		if callCount > 1 {
+			return os.ErrPermission
+		}
+		return origMkdirAll(path, mode)
+	}
+
+	err := manager.EnsureConfigs()
+	if err == nil {
+		t.Fatal("EnsureConfigs() error = nil, want mkdirAll error for file parent dir")
+	}
+	if got := err.Error(); !strings.Contains(got, "create parent directory") && !strings.Contains(got, "create shell config directory") {
+		t.Fatalf("EnsureConfigs() error = %q, want parent/config dir error", got)
+	}
+}
+
+// failReadFS is an fs.FS that returns an error when opening a specific file.
+type failReadFS struct {
+	failName string
+}
+
+func (f *failReadFS) Open(name string) (fs.File, error) {
+	if name == f.failName {
+		return nil, os.ErrPermission
+	}
+	// For other files, use an empty MapFS
+	return fstest.MapFS{}.Open(name)
 }
 
 func assertFileContent(t *testing.T, path string, want string) {
