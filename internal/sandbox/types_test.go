@@ -23,6 +23,32 @@ func TestSandboxInfoGetName(t *testing.T) {
 	}
 }
 
+func TestSandboxInfoHasContainerID(t *testing.T) {
+	t.Parallel()
+
+	empty := ""
+	valid := "abc123"
+
+	tests := []struct {
+		name string
+		info SandboxInfo
+		want bool
+	}{
+		{"nil pointer", SandboxInfo{}, false},
+		{"empty string", SandboxInfo{ContainerID: &empty}, false},
+		{"non-empty string", SandboxInfo{ContainerID: &valid}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.info.hasContainerID(); got != tt.want {
+				t.Fatalf("hasContainerID() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSensitiveDirs(t *testing.T) {
 	t.Parallel()
 

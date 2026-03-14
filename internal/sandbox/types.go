@@ -35,6 +35,11 @@ func (s SandboxInfo) GetName() string {
 	return s.Name
 }
 
+// hasContainerID reports whether the sandbox has a non-empty container ID.
+func (s SandboxInfo) hasContainerID() bool {
+	return s.ContainerID != nil && *s.ContainerID != ""
+}
+
 // SensitiveDirs contains the built-in directories that should trigger a warning
 // when users try to sandbox them directly.
 //

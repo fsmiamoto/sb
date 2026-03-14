@@ -92,7 +92,7 @@ func (m *ShellConfigManager) EnsureConfigs() error {
 func (m *SandboxManager) ExecShell(ctx context.Context, sandbox SandboxInfo) (int, error) {
 	m.initDefaults()
 
-	if sandbox.ContainerID == nil || *sandbox.ContainerID == "" {
+	if !sandbox.hasContainerID() {
 		return 0, fmt.Errorf("Sandbox '%s' has no container ID. It may need to be recreated.", sandbox.Name)
 	}
 

@@ -253,7 +253,7 @@ func (m *SandboxManager) Attach(ctx context.Context, name string, workspace stri
 		return SandboxInfo{}, err
 	}
 
-	if sandbox.ContainerID == nil {
+	if !sandbox.hasContainerID() {
 		return SandboxInfo{}, fmt.Errorf("Sandbox '%s' has no container ID. It may need to be recreated.", sandbox.Name)
 	}
 
@@ -283,7 +283,7 @@ func (m *SandboxManager) Stop(ctx context.Context, name string, workspace string
 		return SandboxInfo{}, err
 	}
 
-	if sandbox.ContainerID == nil {
+	if !sandbox.hasContainerID() {
 		return SandboxInfo{}, fmt.Errorf("Sandbox '%s' has no container ID. It may need to be recreated.", sandbox.Name)
 	}
 
@@ -378,7 +378,7 @@ func (m *SandboxManager) FindSandboxes(ctx context.Context, query string) ([]San
 func (m *SandboxManager) GetContainerStatus(ctx context.Context, sandbox SandboxInfo) (string, error) {
 	m.initDefaults()
 
-	if sandbox.ContainerID == nil || *sandbox.ContainerID == "" {
+	if !sandbox.hasContainerID() {
 		return unknownContainerStatus, nil
 	}
 
@@ -512,7 +512,7 @@ func (m *SandboxManager) resolveSandbox(ctx context.Context, name string, worksp
 }
 
 func (m *SandboxManager) destroyContainer(ctx context.Context, sandbox SandboxInfo) error {
-	if sandbox.ContainerID == nil || *sandbox.ContainerID == "" {
+	if !sandbox.hasContainerID() {
 		return nil
 	}
 
