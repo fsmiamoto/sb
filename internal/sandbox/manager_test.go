@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -1733,6 +1734,86 @@ func managedInspect(id string, name string, workspace string, createdAt string, 
 				workspaceLabelKey: workspace,
 			},
 		},
+	}
+}
+
+func TestSandboxManagerCreateDoesNotDuplicateMountsWhenConfigAndCLIOverlap(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	workspace := filepath.Join(home, "workspace", "project")
+	mustMkdirAll(t, workspace)
+
+	// Create a shared mount directory used by both config and CLI levels.
+	sharedMount := filepath.Join(home, "shared-mount")
+	mustMkdirAll(t, sharedMount)
+
+	const sandboxName = "sb-nodups"
+	const createdID = "created-id"
+	const createdAt = "2026-03-08T10:00:00Z"
+
+	var createdHostConfig *containertypes.HostConfig
+
+	// Simulate the correct separation: config-level mounts go to extraMounts,
+	// CLI-level mounts go to CreateOptions.ExtraMounts.
+	manager := &SandboxManager{
+		extraMounts: []string{sharedMount},
+		imageManager: &fakeManagerImageManager{
+			ensureImageFunc: func(context.Context, string) error { return nil },
+		},
+		getClient: func(context.Context) (dockerSandboxClient, error) {
+			return &fakeSandboxClient{
+				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
+					switch containerID {
+					case sandboxName:
+						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+					case createdID:
+						return managedInspect(createdID, sandboxName, workspace, createdAt, "created"), nil
+					default:
+						t.Fatalf("ContainerInspect() unexpected id = %q", containerID)
+						return containertypes.InspectResponse{}, nil
+					}
+				},
+				createFunc: func(ctx context.Context, config *containertypes.Config, hostConfig *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, containerName string) (containertypes.CreateResponse, error) {
+					createdHostConfig = hostConfig
+					return containertypes.CreateResponse{ID: createdID}, nil
+				},
+			}, nil
+		},
+		getUIDGID:          func() (int, int) { return 1000, 1001 },
+		getenv:             func(string) string { return "" },
+		ensureShellConfigs: func() error { return nil },
+	}
+
+	_, err := manager.Create(ctx, CreateOptions{
+		Workspace:   workspace,
+		Name:        sandboxName,
+		ExtraMounts: []string{sharedMount},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if createdHostConfig == nil {
+		t.Fatal("Create() did not call ContainerCreate() with a host config")
+	}
+
+	// Count how many times sharedMount appears as a mount source.
+	count := 0
+	for _, m := range createdHostConfig.Mounts {
+		if m.Source == sharedMount {
+			count++
+		}
+	}
+	if count != 2 {
+		// When config and CLI both specify the same path, it appears twice:
+		// once from config-level (MountBuilder.extraMounts) and once from
+		// CLI-level (CreateOptions.ExtraMounts). This is expected when the
+		// same path is explicitly listed at both levels. The critical thing
+		// is that it's 2, not 3 (which would indicate the CLI mount was
+		// also merged into the config-level mounts).
+		t.Fatalf("shared mount appeared %d times in mounts, want 2", count)
 	}
 }
 

@@ -187,9 +187,10 @@ func createCommand() *cli.Command {
 			cliEnvs := cCtx.StringSlice("env")
 			cliImage := cCtx.String("image")
 
+			// Only pass the image override to MergeConfig for manager construction.
+			// CLI mounts and envs go through CreateOptions to avoid duplication —
+			// the manager already handles config-level mounts/envs internally.
 			merged := config.MergeConfig(fileConfig, config.CLIArgs{
-				Mount: cliMounts,
-				Env:   cliEnvs,
 				Image: cliImage,
 			})
 
