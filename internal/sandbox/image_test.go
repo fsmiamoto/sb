@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -304,6 +305,255 @@ func TestImageManagerEnsureCustomImagePropagatesPullStreamErrors(t *testing.T) {
 	err := manager.EnsureCustomImage(context.Background(), "broken:latest")
 	if err == nil {
 		t.Fatal("EnsureCustomImage() error = nil, want pull stream failure")
+	}
+	if !strings.Contains(err.Error(), `pull Docker image "broken:latest"`) {
+		t.Fatalf("EnsureCustomImage() error = %q, want pull context", err)
+	}
+}
+
+func TestImageManagerEnsureImageGetClientError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("docker unavailable")
+	manager := &ImageManager{
+		getClient: func(context.Context) (dockerImageClient, error) {
+			return nil, wantErr
+		},
+	}
+
+	err := manager.EnsureImage(context.Background(), "sb-sandbox:latest")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("EnsureImage() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestImageManagerEnsureImageMkdirTempError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("mkdirtemp failed")
+	manager := &ImageManager{
+		dockerContext: fstest.MapFS{
+			"Dockerfile": {Data: []byte("FROM scratch\n"), Mode: 0o644},
+		},
+		getClient: func(context.Context) (dockerImageClient, error) {
+			return &fakeImageClient{
+				inspectFunc: func(ctx context.Context, imageName string) (dockerimage.InspectResponse, []byte, error) {
+					return dockerimage.InspectResponse{}, nil, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+		mkdirTemp: func(string, string) (string, error) {
+			return "", wantErr
+		},
+	}
+
+	err := manager.EnsureImage(context.Background(), "sb-sandbox:test")
+	if err == nil || !errors.Is(err, wantErr) {
+		t.Fatalf("EnsureImage() error = %v, want wrapping %v", err, wantErr)
+	}
+	if !strings.Contains(err.Error(), "create temporary Docker build context") {
+		t.Fatalf("EnsureImage() error = %q, want mkdirTemp context", err)
+	}
+}
+
+func TestImageManagerEnsureImageCopyFSError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("copyfs failed")
+	manager := &ImageManager{
+		dockerContext: fstest.MapFS{
+			"Dockerfile": {Data: []byte("FROM scratch\n"), Mode: 0o644},
+		},
+		getClient: func(context.Context) (dockerImageClient, error) {
+			return &fakeImageClient{
+				inspectFunc: func(ctx context.Context, imageName string) (dockerimage.InspectResponse, []byte, error) {
+					return dockerimage.InspectResponse{}, nil, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+		mkdirTemp: func(string, string) (string, error) {
+			return t.TempDir(), nil
+		},
+		removeAll: func(string) error { return nil },
+		copyFS: func(string, fs.FS) error {
+			return wantErr
+		},
+	}
+
+	err := manager.EnsureImage(context.Background(), "sb-sandbox:test")
+	if err == nil || !errors.Is(err, wantErr) {
+		t.Fatalf("EnsureImage() error = %v, want wrapping %v", err, wantErr)
+	}
+	if !strings.Contains(err.Error(), "extract embedded Docker build context") {
+		t.Fatalf("EnsureImage() error = %q, want copyFS context", err)
+	}
+}
+
+func TestImageManagerEnsureImageOpenBuildContextError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("archive failed")
+	manager := &ImageManager{
+		dockerContext: fstest.MapFS{
+			"Dockerfile": {Data: []byte("FROM scratch\n"), Mode: 0o644},
+		},
+		getClient: func(context.Context) (dockerImageClient, error) {
+			return &fakeImageClient{
+				inspectFunc: func(ctx context.Context, imageName string) (dockerimage.InspectResponse, []byte, error) {
+					return dockerimage.InspectResponse{}, nil, cerrdefs.ErrNotFound
+				},
+			}, nil
+		},
+		mkdirTemp: func(string, string) (string, error) {
+			return t.TempDir(), nil
+		},
+		removeAll: func(string) error { return nil },
+		openBuildContext: func(string) (io.ReadCloser, error) {
+			return nil, wantErr
+		},
+	}
+
+	err := manager.EnsureImage(context.Background(), "sb-sandbox:test")
+	if err == nil || !errors.Is(err, wantErr) {
+		t.Fatalf("EnsureImage() error = %v, want wrapping %v", err, wantErr)
+	}
+	if !strings.Contains(err.Error(), "create Docker build context archive") {
+		t.Fatalf("EnsureImage() error = %q, want openBuildContext context", err)
+	}
+}
+
+func TestImageManagerEnsureImageBuildError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("build error")
+	manager := &ImageManager{
+		dockerContext: fstest.MapFS{
+			"Dockerfile": {Data: []byte("FROM scratch\n"), Mode: 0o644},
+		},
+		getClient: func(context.Context) (dockerImageClient, error) {
+			return &fakeImageClient{
+				inspectFunc: func(ctx context.Context, imageName string) (dockerimage.InspectResponse, []byte, error) {
+					return dockerimage.InspectResponse{}, nil, cerrdefs.ErrNotFound
+				},
+				buildFunc: func(ctx context.Context, buildContext io.Reader, options buildtypes.ImageBuildOptions) (buildtypes.ImageBuildResponse, error) {
+					return buildtypes.ImageBuildResponse{}, wantErr
+				},
+			}, nil
+		},
+		mkdirTemp: func(string, string) (string, error) {
+			return t.TempDir(), nil
+		},
+		removeAll: func(string) error { return nil },
+		openBuildContext: func(string) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("")), nil
+		},
+	}
+
+	err := manager.EnsureImage(context.Background(), "sb-sandbox:test")
+	if err == nil || !errors.Is(err, wantErr) {
+		t.Fatalf("EnsureImage() error = %v, want wrapping %v", err, wantErr)
+	}
+	if !strings.Contains(err.Error(), "build Docker image") {
+		t.Fatalf("EnsureImage() error = %q, want build context", err)
+	}
+}
+
+func TestImageManagerEnsureImageBuildStreamError(t *testing.T) {
+	t.Parallel()
+
+	manager := &ImageManager{
+		dockerContext: fstest.MapFS{
+			"Dockerfile": {Data: []byte("FROM scratch\n"), Mode: 0o644},
+		},
+		getClient: func(context.Context) (dockerImageClient, error) {
+			return &fakeImageClient{
+				inspectFunc: func(ctx context.Context, imageName string) (dockerimage.InspectResponse, []byte, error) {
+					return dockerimage.InspectResponse{}, nil, cerrdefs.ErrNotFound
+				},
+				buildFunc: func(ctx context.Context, buildContext io.Reader, options buildtypes.ImageBuildOptions) (buildtypes.ImageBuildResponse, error) {
+					return buildtypes.ImageBuildResponse{
+						Body: jsonStream(`{"errorDetail":{"message":"build failed"},"error":"build failed"}`),
+					}, nil
+				},
+			}, nil
+		},
+		mkdirTemp: func(string, string) (string, error) {
+			return t.TempDir(), nil
+		},
+		removeAll: func(string) error { return nil },
+		openBuildContext: func(string) (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("")), nil
+		},
+	}
+
+	err := manager.EnsureImage(context.Background(), "sb-sandbox:test")
+	if err == nil {
+		t.Fatal("EnsureImage() error = nil, want build stream error")
+	}
+	if !strings.Contains(err.Error(), "build Docker image") {
+		t.Fatalf("EnsureImage() error = %q, want build stream context", err)
+	}
+}
+
+func TestImageManagerEnsureCustomImageGetClientError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("docker unavailable")
+	manager := &ImageManager{
+		getClient: func(context.Context) (dockerImageClient, error) {
+			return nil, wantErr
+		},
+	}
+
+	err := manager.EnsureCustomImage(context.Background(), "alpine:latest")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("EnsureCustomImage() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestImageManagerEnsureCustomImageInspectNonNotFoundError(t *testing.T) {
+	t.Parallel()
+
+	inspectErr := errors.New("inspect connection error")
+	manager := &ImageManager{
+		getClient: func(context.Context) (dockerImageClient, error) {
+			return &fakeImageClient{
+				inspectFunc: func(ctx context.Context, imageName string) (dockerimage.InspectResponse, []byte, error) {
+					return dockerimage.InspectResponse{}, nil, inspectErr
+				},
+			}, nil
+		},
+	}
+
+	err := manager.EnsureCustomImage(context.Background(), "alpine:latest")
+	if err == nil || !errors.Is(err, inspectErr) {
+		t.Fatalf("EnsureCustomImage() error = %v, want wrapping %v", err, inspectErr)
+	}
+	if !strings.Contains(err.Error(), `inspect Docker image "alpine:latest"`) {
+		t.Fatalf("EnsureCustomImage() error = %q, want inspect context", err)
+	}
+}
+
+func TestImageManagerEnsureCustomImagePullError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("pull failed")
+	manager := &ImageManager{
+		getClient: func(context.Context) (dockerImageClient, error) {
+			return &fakeImageClient{
+				inspectFunc: func(ctx context.Context, imageName string) (dockerimage.InspectResponse, []byte, error) {
+					return dockerimage.InspectResponse{}, nil, cerrdefs.ErrNotFound
+				},
+				pullFunc: func(ctx context.Context, imageName string, options dockerimage.PullOptions) (io.ReadCloser, error) {
+					return nil, wantErr
+				},
+			}, nil
+		},
+	}
+
+	err := manager.EnsureCustomImage(context.Background(), "broken:latest")
+	if err == nil || !errors.Is(err, wantErr) {
+		t.Fatalf("EnsureCustomImage() error = %v, want wrapping %v", err, wantErr)
 	}
 	if !strings.Contains(err.Error(), `pull Docker image "broken:latest"`) {
 		t.Fatalf("EnsureCustomImage() error = %q, want pull context", err)
