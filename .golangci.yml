@@ -13,8 +13,10 @@ linters:
     - asciicheck
     - bidichk
     - bodyclose
+    - canonicalheader
     - containedctx
     - copyloopvar
+    - decorder
     - dogsled
     - dupword
     - durationcheck
@@ -31,7 +33,9 @@ linters:
     - gochecksumtype
     - gocritic
     - godoclint
+    - gomoddirectives
     - goprintffuncname
+    - gosmopolitan
     - govet
     - iface
     - ineffassign
@@ -46,13 +50,17 @@ linters:
     - nilerr
     - nilnesserr
     - noctx
+    - nolintlint
     - nonamedreturns
     - nosprintfhostport
     - perfsprint
     - predeclared
+    - prealloc
     - reassign
     - recvcheck
+    - spancheck
     - staticcheck
+    - tagalign
     - testableexamples
     - thelper
     - unconvert
