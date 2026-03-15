@@ -134,6 +134,106 @@ func TestMountBuilderBuildKeepsExpandedExtraMountTargetAsAbsolutePath(t *testing
 	}
 }
 
+func TestDeduplicateMounts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		mounts []dockermount.Mount
+		want   []dockermount.Mount
+	}{
+		{
+			name:   "no duplicates",
+			mounts: []dockermount.Mount{{Target: "/a"}, {Target: "/b"}},
+			want:   []dockermount.Mount{{Target: "/a"}, {Target: "/b"}},
+		},
+		{
+			name:   "duplicate keeps last",
+			mounts: []dockermount.Mount{{Target: "/a", ReadOnly: true}, {Target: "/b"}, {Target: "/a", ReadOnly: false}},
+			want:   []dockermount.Mount{{Target: "/b"}, {Target: "/a", ReadOnly: false}},
+		},
+		{
+			name:   "all same target",
+			mounts: []dockermount.Mount{{Target: "/a", Source: "1"}, {Target: "/a", Source: "2"}, {Target: "/a", Source: "3"}},
+			want:   []dockermount.Mount{{Target: "/a", Source: "3"}},
+		},
+		{
+			name:   "empty",
+			mounts: []dockermount.Mount{},
+			want:   []dockermount.Mount{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := deduplicateMounts(tc.mounts)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("deduplicateMounts() = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildDeduplicatesCLIOverridingConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	workspace := filepath.Join(home, "workspace")
+	mustMkdirAll(t, workspace)
+
+	sharedDir := filepath.Join(home, "shared")
+	mustMkdirAll(t, sharedDir)
+
+	// Config and CLI both specify the same mount path.
+	builder := NewMountBuilder([]string{"~/shared"})
+	mounts, _, err := builder.Build(workspace, []string{"~/shared"})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	// Count how many mounts target /home/sandbox/shared.
+	target := "/home/sandbox/shared"
+	count := 0
+	for _, m := range mounts {
+		if m.Target == target {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 mount targeting %q, got %d", target, count)
+	}
+}
+
+func TestBuildDeduplicatesCLIOverridingDefault(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	workspace := filepath.Join(home, "workspace")
+	mustMkdirAll(t, workspace)
+
+	// Create .gitconfig so the default mount is included.
+	mustWriteFile(t, filepath.Join(home, ".gitconfig"), "[user]\n\tname = test\n")
+
+	// CLI specifies the same path as a default mount.
+	builder := NewMountBuilder(nil)
+	mounts, _, err := builder.Build(workspace, []string{"~/.gitconfig"})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	target := "/home/sandbox/.gitconfig"
+	count := 0
+	for _, m := range mounts {
+		if m.Target == target {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 mount targeting %q, got %d", target, count)
+	}
+}
+
 func TestExpandAndAbsPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

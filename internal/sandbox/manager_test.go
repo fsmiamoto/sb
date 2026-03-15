@@ -2507,14 +2507,12 @@ func TestSandboxManagerCreateDoesNotDuplicateMountsWhenConfigAndCLIOverlap(t *te
 			count++
 		}
 	}
-	if count != 2 {
-		// When config and CLI both specify the same path, it appears twice:
-		// once from config-level (MountBuilder.extraMounts) and once from
-		// CLI-level (CreateOptions.ExtraMounts). This is expected when the
-		// same path is explicitly listed at both levels. The critical thing
-		// is that it's 2, not 3 (which would indicate the CLI mount was
-		// also merged into the config-level mounts).
-		t.Fatalf("shared mount appeared %d times in mounts, want 2", count)
+	if count != 1 {
+		// When config and CLI both specify the same path, deduplication
+		// keeps only the last occurrence (CLI takes precedence over config).
+		// Docker rejects containers with duplicate mount targets, so this
+		// deduplication prevents a container creation error.
+		t.Fatalf("shared mount appeared %d times in mounts, want 1", count)
 	}
 }
 

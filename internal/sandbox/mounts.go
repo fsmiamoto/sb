@@ -65,7 +65,26 @@ func (b *MountBuilder) Build(workspace string, extraCLIMounts []string) ([]docke
 
 	missing := slices.Concat(configMissing, cliMissing)
 
-	return mounts, missing, nil
+	return deduplicateMounts(mounts), missing, nil
+}
+
+// deduplicateMounts removes mounts with duplicate target paths, keeping the
+// last occurrence. This gives proper precedence: CLI > config > defaults.
+func deduplicateMounts(mounts []dockermount.Mount) []dockermount.Mount {
+	seen := make(map[string]int, len(mounts))
+	for i, m := range mounts {
+		seen[m.Target] = i
+	}
+	if len(seen) == len(mounts) {
+		return mounts
+	}
+	result := make([]dockermount.Mount, 0, len(seen))
+	for i, m := range mounts {
+		if seen[m.Target] == i {
+			result = append(result, m)
+		}
+	}
+	return result
 }
 
 func buildDefaultMounts(specs []MountSpec) ([]dockermount.Mount, error) {
