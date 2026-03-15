@@ -34,6 +34,11 @@ func TestMapContainerPath(t *testing.T) {
 			want:     "/home/sandbox",
 		},
 		{
+			name:     "home root with trailing slash",
+			hostPath: "~/",
+			want:     "/home/sandbox",
+		},
+		{
 			name:     "absolute path unchanged",
 			hostPath: "/etc/hosts",
 			want:     "/etc/hosts",

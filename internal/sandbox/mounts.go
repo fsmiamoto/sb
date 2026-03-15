@@ -143,7 +143,7 @@ func expandAndAbsPath(path string) (string, error) {
 
 func mapContainerPath(hostPath string) string {
 	switch {
-	case hostPath == "~":
+	case hostPath == "~", hostPath == "~/", hostPath == "~\\":
 		return sandboxHomeDir
 	case strings.HasPrefix(hostPath, "~/"), strings.HasPrefix(hostPath, "~\\"):
 		return sandboxHomeDir + "/" + filepath.ToSlash(filepath.Clean(hostPath[2:]))
