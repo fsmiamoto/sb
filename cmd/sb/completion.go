@@ -6,8 +6,6 @@ import (
 	"os"
 
 	cli "github.com/urfave/cli/v2"
-
-	"github.com/fsmiamoto/sb/internal/sandbox"
 )
 
 // completeSandboxNames provides dynamic completion of sandbox names
@@ -17,7 +15,8 @@ func completeSandboxNames(cCtx *cli.Context) {
 		return // already have a positional arg
 	}
 
-	mgr := sandbox.NewSandboxManager(sandbox.SandboxManagerOptions{})
+	merged := loadMergedConfig(cCtx)
+	mgr := newManager(merged)
 	defer func() { _ = mgr.Close() }()
 	ctx := context.Background()
 	sandboxes, err := mgr.List(ctx)
