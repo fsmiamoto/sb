@@ -320,7 +320,7 @@ func (m *SandboxManager) Destroy(ctx context.Context, opts DestroyOptions) (Sand
 		ctx,
 		opts.Name,
 		opts.Workspace,
-		"No sandbox found for workspace '%s'. Nothing to destroy.",
+		"nothing to destroy",
 	)
 	if err != nil {
 		return SandboxInfo{}, err
@@ -483,7 +483,7 @@ func (m *SandboxManager) getSandbox(ctx context.Context, name string) (*SandboxI
 	return &info, nil
 }
 
-func (m *SandboxManager) resolveSandbox(ctx context.Context, name string, workspace string, notFoundMessage string) (SandboxInfo, error) {
+func (m *SandboxManager) resolveSandbox(ctx context.Context, name string, workspace string, notFoundHint string) (SandboxInfo, error) {
 	if name != "" {
 		sandbox, err := m.getSandbox(ctx, name)
 		if err != nil {
@@ -510,10 +510,10 @@ func (m *SandboxManager) resolveSandbox(ctx context.Context, name string, worksp
 		return SandboxInfo{}, err
 	}
 	if sandbox == nil {
-		if notFoundMessage == "" {
-			notFoundMessage = "No sandbox found for workspace '%s'. Use 'sb create' to create one."
+		if notFoundHint == "" {
+			notFoundHint = "use 'sb create' to create one"
 		}
-		return SandboxInfo{}, fmt.Errorf(notFoundMessage, resolvedWorkspace)
+		return SandboxInfo{}, fmt.Errorf("no sandbox found for workspace '%s'; %s", resolvedWorkspace, notFoundHint)
 	}
 
 	return *sandbox, nil

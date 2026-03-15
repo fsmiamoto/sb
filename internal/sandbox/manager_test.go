@@ -1342,8 +1342,8 @@ func TestDestroySandboxNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("Destroy() expected error when sandbox not found")
 	}
-	if !strings.Contains(err.Error(), "Nothing to destroy") {
-		t.Fatalf("Destroy() error = %q, want 'Nothing to destroy'", err)
+	if !strings.Contains(err.Error(), "nothing to destroy") {
+		t.Fatalf("Destroy() error = %q, want 'nothing to destroy'", err)
 	}
 }
 
@@ -2645,7 +2645,7 @@ func TestResolveSandboxByWorkspaceNotFoundDefaultMessage(t *testing.T) {
 	if err == nil {
 		t.Fatal("resolveSandbox() error = nil, want not-found error")
 	}
-	if !strings.Contains(err.Error(), "No sandbox found for workspace") {
+	if !strings.Contains(err.Error(), "no sandbox found for workspace") {
 		t.Fatalf("error = %q, want default not-found message", err.Error())
 	}
 	if !strings.Contains(err.Error(), "sb create") {
@@ -2669,11 +2669,11 @@ func TestResolveSandboxByWorkspaceNotFoundCustomMessage(t *testing.T) {
 		},
 	}
 
-	_, err := manager.resolveSandbox(ctx, "", workspace, "No sandbox found for workspace '%s'. Nothing to destroy.")
+	_, err := manager.resolveSandbox(ctx, "", workspace, "nothing to destroy")
 	if err == nil {
 		t.Fatal("resolveSandbox() error = nil, want error")
 	}
-	wantMessage := fmt.Sprintf("No sandbox found for workspace '%s'. Nothing to destroy.", workspace)
+	wantMessage := fmt.Sprintf("no sandbox found for workspace '%s'; nothing to destroy", workspace)
 	if err.Error() != wantMessage {
 		t.Fatalf("error = %q, want %q", err.Error(), wantMessage)
 	}
