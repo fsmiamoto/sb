@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"strings"
 
 	cerrdefs "github.com/containerd/errdefs"
@@ -32,10 +30,7 @@ type ImageManager struct {
 
 	getClient           func(context.Context) (dockerImageClient, error)
 	dockerContext       fs.FS
-	copyFS              func(string, fs.FS) error
-	mkdirTemp           func(string, string) (string, error)
-	removeAll           func(string) error
-	openBuildContext    func(string) (io.ReadCloser, error)
+	buildContextArchive func(fs.FS) (io.ReadCloser, error)
 	consumeDockerStream func(io.ReadCloser) error
 }
 
@@ -67,19 +62,7 @@ func (m *ImageManager) EnsureImage(ctx context.Context, imageName string) error 
 		return fmt.Errorf("embedded Docker build context is missing Dockerfile: %w", err)
 	}
 
-	tempDir, err := m.mkdirTemp("", "sb-docker-context-*")
-	if err != nil {
-		return fmt.Errorf("create temporary Docker build context for %q: %w", imageName, err)
-	}
-	defer func() {
-		_ = m.removeAll(tempDir)
-	}()
-
-	if err := m.copyFS(tempDir, m.dockerContext); err != nil {
-		return fmt.Errorf("extract embedded Docker build context: %w", err)
-	}
-
-	buildContext, err := m.openBuildContext(tempDir)
+	buildContext, err := m.buildContextArchive(m.dockerContext)
 	if err != nil {
 		return fmt.Errorf("create Docker build context archive for %q: %w", imageName, err)
 	}
@@ -149,17 +132,8 @@ func (m *ImageManager) initDefaults() {
 	if m.dockerContext == nil {
 		m.dockerContext = assets.DockerContextFS()
 	}
-	if m.copyFS == nil {
-		m.copyFS = os.CopyFS
-	}
-	if m.mkdirTemp == nil {
-		m.mkdirTemp = os.MkdirTemp
-	}
-	if m.removeAll == nil {
-		m.removeAll = os.RemoveAll
-	}
-	if m.openBuildContext == nil {
-		m.openBuildContext = createBuildContextArchive
+	if m.buildContextArchive == nil {
+		m.buildContextArchive = createBuildContextArchive
 	}
 	if m.consumeDockerStream == nil {
 		m.consumeDockerStream = consumeDockerStream
@@ -178,15 +152,15 @@ func normalizeImageName(imageName string) string {
 	return imageName
 }
 
-func createBuildContextArchive(root string) (io.ReadCloser, error) {
+func createBuildContextArchive(root fs.FS) (io.ReadCloser, error) {
 	var buffer bytes.Buffer
 	tw := tar.NewWriter(&buffer)
 
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	err := fs.WalkDir(root, ".", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if path == root {
+		if path == "." {
 			return nil
 		}
 
@@ -195,16 +169,11 @@ func createBuildContextArchive(root string) (io.ReadCloser, error) {
 			return err
 		}
 
-		relPath, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {
 			return err
 		}
-		header.Name = filepath.ToSlash(relPath)
+		header.Name = path
 		if info.IsDir() && !strings.HasSuffix(header.Name, "/") {
 			header.Name += "/"
 		}
@@ -217,7 +186,7 @@ func createBuildContextArchive(root string) (io.ReadCloser, error) {
 			return nil
 		}
 
-		file, err := os.Open(path)
+		file, err := root.Open(path)
 		if err != nil {
 			return err
 		}

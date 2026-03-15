@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -86,8 +85,6 @@ func TestImageManagerEnsureImageBuildsEmbeddedContextWhenMissing(t *testing.T) {
 		"configs/nvim/lua/a.lua": {Data: []byte("return {}\n"), Mode: 0o644},
 	}
 
-	var extractedDir string
-	var removedDir string
 	manager := &ImageManager{
 		dockerContext: dockerContext,
 		getClient: func(context.Context) (dockerImageClient, error) {
@@ -137,31 +134,10 @@ func TestImageManagerEnsureImageBuildsEmbeddedContextWhenMissing(t *testing.T) {
 				},
 			}, nil
 		},
-		mkdirTemp: func(dir, pattern string) (string, error) {
-			tmpDir, err := os.MkdirTemp(t.TempDir(), pattern)
-			if err != nil {
-				return "", err
-			}
-			extractedDir = tmpDir
-			return tmpDir, nil
-		},
-		removeAll: func(path string) error {
-			removedDir = path
-			return os.RemoveAll(path)
-		},
 	}
 
 	if err := manager.EnsureImage(context.Background(), "sb-sandbox:test"); err != nil {
 		t.Fatalf("EnsureImage() error = %v", err)
-	}
-	if extractedDir == "" {
-		t.Fatal("EnsureImage() did not create a temporary Docker context directory")
-	}
-	if removedDir != extractedDir {
-		t.Fatalf("EnsureImage() removed %q, want %q", removedDir, extractedDir)
-	}
-	if _, err := os.Stat(extractedDir); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("temporary Docker context dir still exists or unexpected error: %v", err)
 	}
 }
 
@@ -328,69 +304,7 @@ func TestImageManagerEnsureImageGetClientError(t *testing.T) {
 	}
 }
 
-func TestImageManagerEnsureImageMkdirTempError(t *testing.T) {
-	t.Parallel()
-
-	wantErr := errors.New("mkdirtemp failed")
-	manager := &ImageManager{
-		dockerContext: fstest.MapFS{
-			"Dockerfile": {Data: []byte("FROM scratch\n"), Mode: 0o644},
-		},
-		getClient: func(context.Context) (dockerImageClient, error) {
-			return &fakeImageClient{
-				inspectFunc: func(ctx context.Context, imageName string) (dockerimage.InspectResponse, []byte, error) {
-					return dockerimage.InspectResponse{}, nil, cerrdefs.ErrNotFound
-				},
-			}, nil
-		},
-		mkdirTemp: func(string, string) (string, error) {
-			return "", wantErr
-		},
-	}
-
-	err := manager.EnsureImage(context.Background(), "sb-sandbox:test")
-	if err == nil || !errors.Is(err, wantErr) {
-		t.Fatalf("EnsureImage() error = %v, want wrapping %v", err, wantErr)
-	}
-	if !strings.Contains(err.Error(), "create temporary Docker build context") {
-		t.Fatalf("EnsureImage() error = %q, want mkdirTemp context", err)
-	}
-}
-
-func TestImageManagerEnsureImageCopyFSError(t *testing.T) {
-	t.Parallel()
-
-	wantErr := errors.New("copyfs failed")
-	manager := &ImageManager{
-		dockerContext: fstest.MapFS{
-			"Dockerfile": {Data: []byte("FROM scratch\n"), Mode: 0o644},
-		},
-		getClient: func(context.Context) (dockerImageClient, error) {
-			return &fakeImageClient{
-				inspectFunc: func(ctx context.Context, imageName string) (dockerimage.InspectResponse, []byte, error) {
-					return dockerimage.InspectResponse{}, nil, cerrdefs.ErrNotFound
-				},
-			}, nil
-		},
-		mkdirTemp: func(string, string) (string, error) {
-			return t.TempDir(), nil
-		},
-		removeAll: func(string) error { return nil },
-		copyFS: func(string, fs.FS) error {
-			return wantErr
-		},
-	}
-
-	err := manager.EnsureImage(context.Background(), "sb-sandbox:test")
-	if err == nil || !errors.Is(err, wantErr) {
-		t.Fatalf("EnsureImage() error = %v, want wrapping %v", err, wantErr)
-	}
-	if !strings.Contains(err.Error(), "extract embedded Docker build context") {
-		t.Fatalf("EnsureImage() error = %q, want copyFS context", err)
-	}
-}
-
-func TestImageManagerEnsureImageOpenBuildContextError(t *testing.T) {
+func TestImageManagerEnsureImageBuildContextArchiveError(t *testing.T) {
 	t.Parallel()
 
 	wantErr := errors.New("archive failed")
@@ -405,11 +319,7 @@ func TestImageManagerEnsureImageOpenBuildContextError(t *testing.T) {
 				},
 			}, nil
 		},
-		mkdirTemp: func(string, string) (string, error) {
-			return t.TempDir(), nil
-		},
-		removeAll: func(string) error { return nil },
-		openBuildContext: func(string) (io.ReadCloser, error) {
+		buildContextArchive: func(fs.FS) (io.ReadCloser, error) {
 			return nil, wantErr
 		},
 	}
@@ -419,7 +329,7 @@ func TestImageManagerEnsureImageOpenBuildContextError(t *testing.T) {
 		t.Fatalf("EnsureImage() error = %v, want wrapping %v", err, wantErr)
 	}
 	if !strings.Contains(err.Error(), "create Docker build context archive") {
-		t.Fatalf("EnsureImage() error = %q, want openBuildContext context", err)
+		t.Fatalf("EnsureImage() error = %q, want buildContextArchive context", err)
 	}
 }
 
@@ -440,13 +350,6 @@ func TestImageManagerEnsureImageBuildError(t *testing.T) {
 					return buildtypes.ImageBuildResponse{}, wantErr
 				},
 			}, nil
-		},
-		mkdirTemp: func(string, string) (string, error) {
-			return t.TempDir(), nil
-		},
-		removeAll: func(string) error { return nil },
-		openBuildContext: func(string) (io.ReadCloser, error) {
-			return io.NopCloser(strings.NewReader("")), nil
 		},
 	}
 
@@ -477,13 +380,6 @@ func TestImageManagerEnsureImageBuildStreamError(t *testing.T) {
 					}, nil
 				},
 			}, nil
-		},
-		mkdirTemp: func(string, string) (string, error) {
-			return t.TempDir(), nil
-		},
-		removeAll: func(string) error { return nil },
-		openBuildContext: func(string) (io.ReadCloser, error) {
-			return io.NopCloser(strings.NewReader("")), nil
 		},
 	}
 
@@ -564,15 +460,9 @@ func TestImageManagerEnsureCustomImagePullError(t *testing.T) {
 func TestCreateBuildContextArchiveUsesRelativePaths(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "configs", "nvim"), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "Dockerfile"), []byte("FROM scratch\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(Dockerfile) error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "configs", "nvim", "init.lua"), []byte("print('hi')\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(init.lua) error = %v", err)
+	root := fstest.MapFS{
+		"Dockerfile":             {Data: []byte("FROM scratch\n"), Mode: 0o644},
+		"configs/nvim/init.lua":  {Data: []byte("print('hi')\n"), Mode: 0o644},
 	}
 
 	archive, err := createBuildContextArchive(root)
@@ -586,9 +476,6 @@ func TestCreateBuildContextArchiveUsesRelativePaths(t *testing.T) {
 		if !contains(entries, name) {
 			t.Fatalf("archive missing %q; entries = %#v", name, entries)
 		}
-	}
-	if contains(entries, root) {
-		t.Fatalf("archive unexpectedly included absolute root path %q", root)
 	}
 	if got, want := files["configs/nvim/init.lua"], "print('hi')\n"; got != want {
 		t.Fatalf("configs/nvim/init.lua contents = %q, want %q", got, want)
@@ -727,27 +614,34 @@ func TestImageManagerInitDefaultsWithProvider(t *testing.T) {
 	}
 }
 
-func TestCreateBuildContextArchiveNonexistentRoot(t *testing.T) {
+func TestCreateBuildContextArchiveOpenError(t *testing.T) {
 	t.Parallel()
 
-	_, err := createBuildContextArchive(filepath.Join(t.TempDir(), "nonexistent"))
-	if err == nil {
-		t.Fatal("createBuildContextArchive() error = nil, want walk error")
-	}
-}
-
-func TestCreateBuildContextArchiveFileOpenError(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	// Create a file then make it unreadable to trigger os.Open error inside WalkDir.
-	unreadable := filepath.Join(root, "secret.txt")
-	if err := os.WriteFile(unreadable, []byte("data"), 0o000); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
+	// Use an FS that lists a file via WalkDir but fails when opening it for reading.
+	root := &failOpenFS{
+		FS: fstest.MapFS{
+			"secret.txt": {Data: []byte("data"), Mode: 0o644},
+		},
+		failName: "secret.txt",
 	}
 
 	_, err := createBuildContextArchive(root)
 	if err == nil {
-		t.Fatal("createBuildContextArchive() error = nil, want open error for unreadable file")
+		t.Fatal("createBuildContextArchive() error = nil, want open error")
 	}
+}
+
+// failOpenFS wraps an fs.FS and returns an error when opening a specific file.
+// Unlike failReadFS, the underlying FS still lists the file in directory
+// entries so that fs.WalkDir discovers it before the Open call fails.
+type failOpenFS struct {
+	fs.FS
+	failName string
+}
+
+func (f *failOpenFS) Open(name string) (fs.File, error) {
+	if name == f.failName {
+		return nil, os.ErrPermission
+	}
+	return f.FS.Open(name)
 }
