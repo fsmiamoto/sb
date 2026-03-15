@@ -39,6 +39,7 @@ sb attach [name]        # Attach to sandbox (auto-starts if stopped)
 sb stop [name]          # Stop a running sandbox
 sb destroy [name]       # Remove sandbox completely
 sb list                 # List all sandboxes with status
+sb list --json          # List sandboxes as JSON
 ```
 
 ## Architecture

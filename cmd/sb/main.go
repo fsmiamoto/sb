@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -354,6 +356,12 @@ func listCommand() *cli.Command {
 		Name:    "list",
 		Aliases: []string{"ls"},
 		Usage:   "List all sandboxes with status",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "json",
+				Usage: "Output as JSON",
+			},
+		},
 		Action: func(cCtx *cli.Context) error {
 			merged := loadMergedConfig(cCtx)
 			mgr := newManager(merged)
@@ -363,6 +371,10 @@ func listCommand() *cli.Command {
 			sandboxes, err := mgr.List(ctx)
 			if err != nil {
 				return exitError("%v", err)
+			}
+
+			if cCtx.Bool("json") {
+				return printSandboxJSON(os.Stdout, sandboxes)
 			}
 
 			if len(sandboxes) == 0 {
@@ -452,4 +464,37 @@ func printSandboxTable(sandboxes []sandbox.SandboxInfo) {
 	})
 
 	_, _ = lipgloss.Println(t)
+}
+
+// sandboxJSON is the JSON representation of a sandbox for --json output.
+type sandboxJSON struct {
+	Name      string `json:"name"`
+	Workspace string `json:"workspace"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at,omitempty"`
+}
+
+// printSandboxJSON outputs sandboxes as a JSON array.
+func printSandboxJSON(w io.Writer, sandboxes []sandbox.SandboxInfo) error {
+	items := make([]sandboxJSON, 0, len(sandboxes))
+	for _, sb := range sandboxes {
+		status := sb.Status
+		if status == "" {
+			status = "unknown"
+		}
+		display, _ := statusText(status)
+		items = append(items, sandboxJSON{
+			Name:      sb.Name,
+			Workspace: sb.Workspace,
+			Status:    display,
+			CreatedAt: sb.CreatedAt,
+		})
+	}
+
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(items); err != nil {
+		return exitError("encode JSON: %v", err)
+	}
+	return nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	cli "github.com/urfave/cli/v2"
 
 	"github.com/fsmiamoto/sb/internal/config"
+	"github.com/fsmiamoto/sb/internal/sandbox"
 )
 
 func TestFormatCreatedAt(t *testing.T) {
@@ -282,6 +284,112 @@ func TestStatusText(t *testing.T) {
 			gotDisplay, _ := statusText(tc.raw)
 			if gotDisplay != tc.wantDisplay {
 				t.Fatalf("statusText(%q) display = %q, want %q", tc.raw, gotDisplay, tc.wantDisplay)
+			}
+		})
+	}
+}
+
+func TestPrintSandboxJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		sandboxes []sandbox.SandboxInfo
+		want      []sandboxJSON
+	}{
+		{
+			name:      "empty list outputs empty array",
+			sandboxes: nil,
+			want:      []sandboxJSON{},
+		},
+		{
+			name: "single running sandbox",
+			sandboxes: []sandbox.SandboxInfo{
+				{
+					Name:      "sb-myapp-abc12345",
+					Workspace: "/home/user/myapp",
+					Status:    "running",
+					CreatedAt: "2026-03-08T10:00:00Z",
+				},
+			},
+			want: []sandboxJSON{
+				{
+					Name:      "sb-myapp-abc12345",
+					Workspace: "/home/user/myapp",
+					Status:    "running",
+					CreatedAt: "2026-03-08T10:00:00Z",
+				},
+			},
+		},
+		{
+			name: "maps exited to stopped",
+			sandboxes: []sandbox.SandboxInfo{
+				{
+					Name:      "sb-proj-def67890",
+					Workspace: "/tmp/proj",
+					Status:    "exited",
+				},
+			},
+			want: []sandboxJSON{
+				{
+					Name:      "sb-proj-def67890",
+					Workspace: "/tmp/proj",
+					Status:    "stopped",
+				},
+			},
+		},
+		{
+			name: "empty status maps to unknown",
+			sandboxes: []sandbox.SandboxInfo{
+				{
+					Name:      "sb-test-11111111",
+					Workspace: "/tmp/test",
+					Status:    "",
+				},
+			},
+			want: []sandboxJSON{
+				{
+					Name:      "sb-test-11111111",
+					Workspace: "/tmp/test",
+					Status:    "unknown",
+				},
+			},
+		},
+		{
+			name: "multiple sandboxes",
+			sandboxes: []sandbox.SandboxInfo{
+				{Name: "sb-a-11111111", Workspace: "/a", Status: "running", CreatedAt: "2026-01-01T00:00:00Z"},
+				{Name: "sb-b-22222222", Workspace: "/b", Status: "exited"},
+			},
+			want: []sandboxJSON{
+				{Name: "sb-a-11111111", Workspace: "/a", Status: "running", CreatedAt: "2026-01-01T00:00:00Z"},
+				{Name: "sb-b-22222222", Workspace: "/b", Status: "stopped"},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var buf bytes.Buffer
+			if err := printSandboxJSON(&buf, tc.sandboxes); err != nil {
+				t.Fatalf("printSandboxJSON() error = %v", err)
+			}
+
+			var got []sandboxJSON
+			if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+				t.Fatalf("json.Unmarshal() error = %v\nraw output: %s", err, buf.String())
+			}
+
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %d items, want %d\nraw output: %s", len(got), len(tc.want), buf.String())
+			}
+
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("item[%d] = %+v, want %+v", i, got[i], tc.want[i])
+				}
 			}
 		})
 	}
