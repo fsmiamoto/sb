@@ -93,6 +93,41 @@ func makeGetenv(vars map[string]string) func(string) string {
 	}
 }
 
+func TestReadCurrentContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("malformed JSON returns empty", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.json")
+		if err := os.WriteFile(configPath, []byte("{not valid json"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if got := readCurrentContext(configPath); got != "" {
+			t.Fatalf("readCurrentContext(malformed) = %q, want empty", got)
+		}
+	})
+
+	t.Run("valid JSON returns currentContext", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "config.json")
+		if err := os.WriteFile(configPath, []byte(`{"currentContext":"colima"}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if got := readCurrentContext(configPath); got != "colima" {
+			t.Fatalf("readCurrentContext(valid) = %q, want %q", got, "colima")
+		}
+	})
+
+	t.Run("missing file returns empty", func(t *testing.T) {
+		t.Parallel()
+		if got := readCurrentContext("/nonexistent/config.json"); got != "" {
+			t.Fatalf("readCurrentContext(missing) = %q, want empty", got)
+		}
+	})
+}
+
 func TestResolveDockerHost(t *testing.T) {
 	t.Parallel()
 

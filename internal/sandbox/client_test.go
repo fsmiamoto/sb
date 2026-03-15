@@ -154,6 +154,40 @@ func TestDockerClientProviderClientClosesAndRetriesAfterPingFailure(t *testing.T
 	}
 }
 
+func TestDockerClientProviderClientPassesCustomHostWhenResolved(t *testing.T) {
+	t.Parallel()
+
+	expectedClient := &dockerclient.Client{}
+	var receivedOptCount int
+
+	provider := &DockerClientProvider{
+		newClient: func(opts ...dockerclient.Opt) (*dockerclient.Client, error) {
+			receivedOptCount = len(opts)
+			return expectedClient, nil
+		},
+		pingClient: func(ctx context.Context, cli *dockerclient.Client) error {
+			return nil
+		},
+		closeClient: func(cli *dockerclient.Client) error {
+			return nil
+		},
+		resolveHost: func() string { return "unix:///custom/docker.sock" },
+	}
+
+	got, err := provider.Client(context.Background())
+	if err != nil {
+		t.Fatalf("Client() error = %v", err)
+	}
+	if got != expectedClient {
+		t.Fatalf("Client() returned unexpected client pointer")
+	}
+	// When resolveHost returns a non-empty string, we expect 3 opts:
+	// FromEnv, WithAPIVersionNegotiation, WithHost.
+	if receivedOptCount != 3 {
+		t.Fatalf("expected 3 docker client opts (FromEnv + APIVersionNegotiation + WithHost), got %d", receivedOptCount)
+	}
+}
+
 func TestDockerClientProviderCloseClosesCachedClientAndResetsCache(t *testing.T) {
 	t.Parallel()
 
