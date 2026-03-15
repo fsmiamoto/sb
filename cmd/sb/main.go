@@ -95,11 +95,11 @@ func newManager(merged config.MergedConfig) *sandbox.SandboxManager {
 
 // resolveNameArg extracts the sandbox name from the first positional argument
 // using fuzzy matching. Returns empty string if no argument is provided.
-func resolveNameArg(ctx context.Context, mgr *sandbox.SandboxManager, cCtx *cli.Context) (string, error) {
+func resolveNameArg(mgr *sandbox.SandboxManager, cCtx *cli.Context) (string, error) {
 	if cCtx.NArg() == 0 {
 		return "", nil
 	}
-	resolved, err := resolveSandboxByName(ctx, mgr, cCtx.Args().First())
+	resolved, err := resolveSandboxByName(cCtx.Context, mgr, cCtx.Args().First())
 	if err != nil {
 		return "", err
 	}
@@ -205,7 +205,7 @@ func createCommand() *cli.Command {
 			mgr := newManager(merged)
 			defer func() { _ = mgr.Close() }()
 
-			ctx := context.Background()
+			ctx := cCtx.Context
 			sb, err := mgr.Create(ctx, sandbox.CreateOptions{
 				Name:        cCtx.String("name"),
 				Force:       cCtx.Bool("force"),
@@ -251,13 +251,12 @@ func attachCommand() *cli.Command {
 			mgr := newManager(merged)
 			defer func() { _ = mgr.Close() }()
 
-			ctx := context.Background()
-
-			name, err := resolveNameArg(ctx, mgr, cCtx)
+			name, err := resolveNameArg(mgr, cCtx)
 			if err != nil {
 				return exitError("%v", err)
 			}
 
+			ctx := cCtx.Context
 			sb, err := mgr.Attach(ctx, name, "")
 			if err != nil {
 				return exitError("%v", err)
@@ -286,14 +285,12 @@ func stopCommand() *cli.Command {
 			mgr := newManager(merged)
 			defer func() { _ = mgr.Close() }()
 
-			ctx := context.Background()
-
-			name, err := resolveNameArg(ctx, mgr, cCtx)
+			name, err := resolveNameArg(mgr, cCtx)
 			if err != nil {
 				return exitError("%v", err)
 			}
 
-			sb, err := mgr.Stop(ctx, name, "")
+			sb, err := mgr.Stop(cCtx.Context, name, "")
 			if err != nil {
 				return exitError("%v", err)
 			}
@@ -323,7 +320,6 @@ func destroyCommand() *cli.Command {
 			mgr := newManager(merged)
 			defer func() { _ = mgr.Close() }()
 
-			ctx := context.Background()
 			force := cCtx.Bool("force")
 
 			var confirmFunc sandbox.ConfirmFunc
@@ -331,12 +327,12 @@ func destroyCommand() *cli.Command {
 				confirmFunc = confirm
 			}
 
-			name, err := resolveNameArg(ctx, mgr, cCtx)
+			name, err := resolveNameArg(mgr, cCtx)
 			if err != nil {
 				return exitError("%v", err)
 			}
 
-			sb, err := mgr.Destroy(ctx, sandbox.DestroyOptions{
+			sb, err := mgr.Destroy(cCtx.Context, sandbox.DestroyOptions{
 				Name:    name,
 				Force:   force,
 				Confirm: confirmFunc,
@@ -367,8 +363,7 @@ func listCommand() *cli.Command {
 			mgr := newManager(merged)
 			defer func() { _ = mgr.Close() }()
 
-			ctx := context.Background()
-			sandboxes, err := mgr.List(ctx)
+			sandboxes, err := mgr.List(cCtx.Context)
 			if err != nil {
 				return exitError("%v", err)
 			}

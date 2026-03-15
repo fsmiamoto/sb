@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -18,8 +17,7 @@ func completeSandboxNames(cCtx *cli.Context) {
 	merged := loadMergedConfig(cCtx)
 	mgr := newManager(merged)
 	defer func() { _ = mgr.Close() }()
-	ctx := context.Background()
-	sandboxes, err := mgr.List(ctx)
+	sandboxes, err := mgr.List(cCtx.Context)
 	if err != nil {
 		return // silently fail — don't break shell completion
 	}
