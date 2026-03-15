@@ -178,7 +178,7 @@ func TestConfirm(t *testing.T) {
 				t.Fatalf("os.Pipe() error = %v", err)
 			}
 			// Discard stderr output from the prompt.
-			_, stderrW, err := os.Pipe()
+			stderrR, stderrW, err := os.Pipe()
 			if err != nil {
 				t.Fatalf("os.Pipe() error = %v", err)
 			}
@@ -188,6 +188,9 @@ func TestConfirm(t *testing.T) {
 			defer func() {
 				os.Stdin = origStdin
 				os.Stderr = origStderr
+				_ = stdinR.Close()
+				_ = stderrR.Close()
+				_ = stderrW.Close()
 			}()
 
 			_, _ = fmt.Fprint(stdinW, tc.input)

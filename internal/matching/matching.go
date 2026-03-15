@@ -8,9 +8,7 @@ import (
 )
 
 // NamedSandbox is the minimal interface required by the matching helpers.
-//
-// The later sandbox package can satisfy this with its shared SandboxInfo type
-// once those types are introduced.
+// The sandbox package satisfies this with its SandboxInfo type.
 type NamedSandbox interface {
 	GetName() string
 }
