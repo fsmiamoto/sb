@@ -2,6 +2,10 @@
 /build/
 /sb
 
+# Go test coverage
+*.out
+coverage.html
+
 # GoReleaser output
 /dist/
 
