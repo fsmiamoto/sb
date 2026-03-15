@@ -367,7 +367,7 @@ func listCommand() *cli.Command {
 				return nil
 			}
 
-			printSandboxTable(ctx, mgr, sandboxes)
+			printSandboxTable(sandboxes)
 			return nil
 		},
 	}
@@ -406,7 +406,7 @@ func statusText(raw string) (string, lipgloss.Style) {
 }
 
 // printSandboxTable outputs a lipgloss-styled table of sandboxes.
-func printSandboxTable(ctx context.Context, mgr *sandbox.SandboxManager, sandboxes []sandbox.SandboxInfo) {
+func printSandboxTable(sandboxes []sandbox.SandboxInfo) {
 	// Build rows and collect per-row status styles.
 	statusStyles := make([]lipgloss.Style, 0, len(sandboxes))
 
@@ -416,8 +416,8 @@ func printSandboxTable(ctx context.Context, mgr *sandbox.SandboxManager, sandbox
 		BorderStyle(borderStyle)
 
 	for _, sb := range sandboxes {
-		raw, err := mgr.GetContainerStatus(ctx, sb)
-		if err != nil {
+		raw := sb.Status
+		if raw == "" {
 			raw = "unknown"
 		}
 		display, sty := statusText(raw)

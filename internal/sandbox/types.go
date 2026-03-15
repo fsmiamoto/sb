@@ -28,6 +28,7 @@ type SandboxInfo struct {
 	Workspace   string
 	CreatedAt   string
 	ContainerID *string
+	Status      string
 }
 
 // GetName returns the sandbox name so SandboxInfo can participate in fuzzy matching.

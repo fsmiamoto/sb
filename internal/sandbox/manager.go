@@ -625,12 +625,15 @@ func sandboxInfoFromInspect(inspect containertypes.InspectResponse) SandboxInfo 
 	labels := inspectLabels(inspect)
 	name := labels[nameLabelKey]
 
-	var id, createdAt string
+	var id, createdAt, status string
 	if inspect.ContainerJSONBase != nil {
 		id = inspect.ID
 		createdAt = inspect.Created
 		if name == "" {
 			name = strings.TrimPrefix(inspect.Name, "/")
+		}
+		if inspect.State != nil {
+			status = inspect.State.Status
 		}
 	}
 
@@ -639,6 +642,7 @@ func sandboxInfoFromInspect(inspect containertypes.InspectResponse) SandboxInfo 
 		Workspace:   labels[workspaceLabelKey],
 		CreatedAt:   createdAt,
 		ContainerID: stringPointer(id),
+		Status:      status,
 	}
 }
 
@@ -658,6 +662,7 @@ func sandboxInfoFromSummary(summary containertypes.Summary) SandboxInfo {
 		Workspace:   summary.Labels[workspaceLabelKey],
 		CreatedAt:   createdAt,
 		ContainerID: stringPointer(summary.ID),
+		Status:      summary.State,
 	}
 }
 

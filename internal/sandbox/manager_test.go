@@ -1708,6 +1708,7 @@ func TestSandboxInfoFromInspect(t *testing.T) {
 				Workspace:   "/home/user/project",
 				CreatedAt:   "2026-03-08T10:30:00Z",
 				ContainerID: ptrStr("abc123"),
+				Status:      "running",
 			},
 		},
 		{
@@ -1847,6 +1848,25 @@ func TestSandboxInfoFromSummary(t *testing.T) {
 				Workspace:   "",
 				CreatedAt:   "2024-01-01T00:00:00Z",
 				ContainerID: ptrStr("jkl012"),
+			},
+		},
+		{
+			name: "state is captured as status",
+			summary: containertypes.Summary{
+				ID:    "mno345",
+				State: "running",
+				Names: []string{"/sb-running"},
+				Labels: map[string]string{
+					managedLabelKey:   managedLabelValue,
+					nameLabelKey:      "sb-running",
+					workspaceLabelKey: "/workspace",
+				},
+			},
+			want: SandboxInfo{
+				Name:        "sb-running",
+				Workspace:   "/workspace",
+				ContainerID: ptrStr("mno345"),
+				Status:      "running",
 			},
 		},
 	}
@@ -2697,6 +2717,9 @@ func assertSandboxInfoEqual(t *testing.T, got, want SandboxInfo) {
 	}
 	if got.ContainerID != nil && *got.ContainerID != *want.ContainerID {
 		t.Fatalf("ContainerID = %q, want %q", *got.ContainerID, *want.ContainerID)
+	}
+	if got.Status != want.Status {
+		t.Fatalf("Status = %q, want %q", got.Status, want.Status)
 	}
 }
 
