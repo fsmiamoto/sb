@@ -461,8 +461,8 @@ func TestCreateBuildContextArchiveUsesRelativePaths(t *testing.T) {
 	t.Parallel()
 
 	root := fstest.MapFS{
-		"Dockerfile":             {Data: []byte("FROM scratch\n"), Mode: 0o644},
-		"configs/nvim/init.lua":  {Data: []byte("print('hi')\n"), Mode: 0o644},
+		"Dockerfile":            {Data: []byte("FROM scratch\n"), Mode: 0o644},
+		"configs/nvim/init.lua": {Data: []byte("print('hi')\n"), Mode: 0o644},
 	}
 
 	archive, err := createBuildContextArchive(root)
