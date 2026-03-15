@@ -1956,17 +1956,13 @@ func TestStringPointer(t *testing.T) {
 	}
 
 	got := stringPointer("hello")
-	if got == nil {
-		t.Fatal("stringPointer(\"hello\") = nil, want non-nil")
-	}
-	if *got != "hello" {
-		t.Fatalf("*stringPointer(\"hello\") = %q, want %q", *got, "hello")
+	if got == nil || *got != "hello" {
+		t.Fatalf("stringPointer(\"hello\") = %v, want pointer to %q", got, "hello")
 	}
 
-	// Verify the returned pointer holds the expected value.
 	ptr := stringPointer("test")
-	if *ptr != "test" {
-		t.Fatalf("stringPointer(\"test\") = %q, want %q", *ptr, "test")
+	if ptr == nil || *ptr != "test" {
+		t.Fatalf("stringPointer(\"test\") = %v, want pointer to %q", ptr, "test")
 	}
 }
 

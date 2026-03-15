@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -114,7 +115,7 @@ func TestImageManagerEnsureImageBuildsEmbeddedContextWhenMissing(t *testing.T) {
 						"configs/nvim/init.lua",
 						"configs/nvim/lua/a.lua",
 					} {
-						if !contains(entries, name) {
+						if !slices.Contains(entries, name) {
 							t.Fatalf("build context tar missing %q; entries = %#v", name, entries)
 						}
 					}
@@ -473,7 +474,7 @@ func TestCreateBuildContextArchiveUsesRelativePaths(t *testing.T) {
 
 	entries, files := readTarArchive(t, archive)
 	for _, name := range []string{"Dockerfile", "configs/nvim/init.lua"} {
-		if !contains(entries, name) {
+		if !slices.Contains(entries, name) {
 			t.Fatalf("archive missing %q; entries = %#v", name, entries)
 		}
 	}
@@ -512,15 +513,6 @@ func readTarArchive(t *testing.T, r io.Reader) ([]string, map[string]string) {
 	}
 
 	return entries, files
-}
-
-func contains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
 }
 
 func jsonStream(lines ...string) io.ReadCloser {
