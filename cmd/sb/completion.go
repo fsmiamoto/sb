@@ -18,6 +18,7 @@ func completeSandboxNames(cCtx *cli.Context) {
 	}
 
 	mgr := sandbox.NewSandboxManager(sandbox.SandboxManagerOptions{})
+	defer func() { _ = mgr.Close() }()
 	ctx := context.Background()
 	sandboxes, err := mgr.List(ctx)
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
+	dockerclient "github.com/docker/docker/client"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -2804,6 +2805,48 @@ func TestSandboxManagerCreateDoesNotDuplicateMountsWhenConfigAndCLIOverlap(t *te
 		// is that it's 2, not 3 (which would indicate the CLI mount was
 		// also merged into the config-level mounts).
 		t.Fatalf("shared mount appeared %d times in mounts, want 2", count)
+	}
+}
+
+func TestCloseReleasesProvider(t *testing.T) {
+	t.Parallel()
+
+	closeCalls := 0
+	provider := &DockerClientProvider{
+		closeClient: func(cli *dockerclient.Client) error {
+			closeCalls++
+			return nil
+		},
+	}
+	// Simulate a cached client so Close actually invokes closeClient.
+	provider.client = &dockerclient.Client{}
+
+	mgr := NewSandboxManager(SandboxManagerOptions{
+		DockerClientProvider: provider,
+	})
+
+	if err := mgr.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if closeCalls != 1 {
+		t.Fatalf("expected closeClient to be called once, got %d", closeCalls)
+	}
+
+	// Second Close should be a no-op (client already cleared).
+	if err := mgr.Close(); err != nil {
+		t.Fatalf("second Close() error = %v", err)
+	}
+	if closeCalls != 1 {
+		t.Fatalf("expected closeClient to still be 1 after second Close, got %d", closeCalls)
+	}
+}
+
+func TestCloseNoClient(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewSandboxManager(SandboxManagerOptions{})
+	if err := mgr.Close(); err != nil {
+		t.Fatalf("Close() on fresh manager should not error, got %v", err)
 	}
 }
 

@@ -121,6 +121,12 @@ func NewSandboxManager(opts SandboxManagerOptions) *SandboxManager {
 	return manager
 }
 
+// Close releases the cached Docker client connection. It is safe to call
+// multiple times and on managers that never contacted Docker.
+func (m *SandboxManager) Close() error {
+	return m.provider.Close()
+}
+
 // Create creates a new sandbox container for the requested workspace.
 func (m *SandboxManager) Create(ctx context.Context, opts CreateOptions) (SandboxInfo, error) {
 	m.initDefaults()

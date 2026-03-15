@@ -192,6 +192,7 @@ func createCommand() *cli.Command {
 			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
 
 			mgr := newManager(merged)
+			defer func() { _ = mgr.Close() }()
 
 			ctx := context.Background()
 			sb, err := mgr.Create(ctx, sandbox.CreateOptions{
@@ -239,6 +240,7 @@ func attachCommand() *cli.Command {
 			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
 
 			mgr := newManager(merged)
+			defer func() { _ = mgr.Close() }()
 
 			ctx := context.Background()
 
@@ -278,6 +280,7 @@ func stopCommand() *cli.Command {
 			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
 
 			mgr := newManager(merged)
+			defer func() { _ = mgr.Close() }()
 
 			ctx := context.Background()
 
@@ -320,6 +323,7 @@ func destroyCommand() *cli.Command {
 			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
 
 			mgr := newManager(merged)
+			defer func() { _ = mgr.Close() }()
 
 			ctx := context.Background()
 			force := cCtx.Bool("force")
@@ -362,6 +366,7 @@ func listCommand() *cli.Command {
 			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
 
 			mgr := newManager(merged)
+			defer func() { _ = mgr.Close() }()
 
 			ctx := context.Background()
 			sandboxes, err := mgr.List(ctx)
