@@ -2714,7 +2714,7 @@ func managedInspect(id string, name string, workspace string, createdAt string, 
 			Name:    "/" + name,
 			Created: createdAt,
 			State: &containertypes.State{
-				Status: containertypes.ContainerState(status),
+				Status: status,
 			},
 		},
 		Config: &containertypes.Config{

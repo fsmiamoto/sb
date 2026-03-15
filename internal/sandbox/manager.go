@@ -401,7 +401,7 @@ func (m *SandboxManager) GetContainerStatus(ctx context.Context, sandbox Sandbox
 		return unknownContainerStatus, nil
 	}
 
-	return string(inspect.State.Status), nil
+	return inspect.State.Status, nil
 }
 
 func (m *SandboxManager) initDefaults() {
