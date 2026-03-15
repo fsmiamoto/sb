@@ -3,8 +3,8 @@ module github.com/fsmiamoto/sb
 go 1.25.0
 
 require (
-	charm.land/lipgloss/v2 v2.0.0
-	github.com/BurntSushi/toml v1.5.0
+	charm.land/lipgloss/v2 v2.0.2
+	github.com/BurntSushi/toml v1.6.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/opencontainers/image-spec v1.1.1
@@ -52,7 +52,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.42.0 // indirect
 	go.opentelemetry.io/otel/trace v1.42.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
