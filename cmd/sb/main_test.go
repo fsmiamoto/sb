@@ -209,9 +209,9 @@ func TestLoadMergedConfig(t *testing.T) {
 			&cli.StringFlag{Name: "config"},
 		},
 		Action: func(cCtx *cli.Context) error {
-			cfg := loadMergedConfig(cCtx)
-			if cfg.Docker.Image != "" {
-				t.Fatalf("loadMergedConfig() Docker.Image = %q, want empty", cfg.Docker.Image)
+			merged := loadMergedConfig(cCtx)
+			if merged.Image != "" {
+				t.Fatalf("loadMergedConfig() Image = %q, want empty", merged.Image)
 			}
 			return nil
 		},

@@ -224,7 +224,7 @@ image = "myimage:v1"
 func TestMergeConfig(t *testing.T) {
 	t.Parallel()
 
-	t.Run("file config only", func(t *testing.T) {
+	t.Run("flattens file config", func(t *testing.T) {
 		fileConfig := Config{
 			Defaults: DefaultsConfig{
 				ExtraMounts:    []string{"/mnt/data"},
@@ -234,7 +234,7 @@ func TestMergeConfig(t *testing.T) {
 			Docker: DockerConfig{Image: "custom:latest"},
 		}
 
-		result := MergeConfig(fileConfig, CLIArgs{})
+		result := MergeConfig(fileConfig)
 		want := MergedConfig{
 			ExtraMounts:    []string{"/mnt/data"},
 			EnvPassthrough: []string{"MY_VAR"},
@@ -244,52 +244,8 @@ func TestMergeConfig(t *testing.T) {
 		assertMergedConfigEqual(t, result, want)
 	})
 
-	t.Run("cli mounts extend", func(t *testing.T) {
-		fileConfig := Config{Defaults: DefaultsConfig{ExtraMounts: []string{"/mnt/data"}}}
-		result := MergeConfig(fileConfig, CLIArgs{Mount: []string{"/mnt/other"}})
-		want := MergedConfig{
-			ExtraMounts:    []string{"/mnt/data", "/mnt/other"},
-			EnvPassthrough: nil,
-			SensitiveDirs:  nil,
-		}
-		assertMergedConfigEqual(t, result, want)
-	})
-
-	t.Run("cli env extends", func(t *testing.T) {
-		fileConfig := Config{Defaults: DefaultsConfig{EnvPassthrough: []string{"VAR1"}}}
-		result := MergeConfig(fileConfig, CLIArgs{Env: []string{"VAR2"}})
-		want := MergedConfig{
-			ExtraMounts:    nil,
-			EnvPassthrough: []string{"VAR1", "VAR2"},
-			SensitiveDirs:  nil,
-		}
-		assertMergedConfigEqual(t, result, want)
-	})
-
-	t.Run("cli image overrides", func(t *testing.T) {
-		fileConfig := Config{Docker: DockerConfig{Image: "file-image:latest"}}
-		result := MergeConfig(fileConfig, CLIArgs{Image: "cli-image:v2"})
-		want := MergedConfig{
-			ExtraMounts:    nil,
-			EnvPassthrough: nil,
-			SensitiveDirs:  nil,
-			Image:          "cli-image:v2",
-		}
-		assertMergedConfigEqual(t, result, want)
-	})
-
-	t.Run("empty config and args", func(t *testing.T) {
-		result := MergeConfig(Config{}, CLIArgs{})
-		want := MergedConfig{
-			ExtraMounts:    nil,
-			EnvPassthrough: nil,
-			SensitiveDirs:  nil,
-		}
-		assertMergedConfigEqual(t, result, want)
-	})
-
-	t.Run("missing sections handled", func(t *testing.T) {
-		result := MergeConfig(Config{}, CLIArgs{})
+	t.Run("empty config", func(t *testing.T) {
+		result := MergeConfig(Config{})
 		want := MergedConfig{
 			ExtraMounts:    nil,
 			EnvPassthrough: nil,

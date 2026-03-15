@@ -28,13 +28,6 @@ type Config struct {
 	Docker   DockerConfig
 }
 
-// CLIArgs captures the CLI overrides that participate in config merging.
-type CLIArgs struct {
-	Mount []string
-	Env   []string
-	Image string
-}
-
 // MergedConfig is the flattened configuration used by later CLI and sandbox code.
 type MergedConfig struct {
 	ExtraMounts    []string
@@ -116,27 +109,15 @@ func LoadConfig(path string) (Config, error) {
 	return config, nil
 }
 
-// MergeConfig combines file configuration and CLI arguments. CLI mounts and env
-// vars extend the file configuration, while CLI image overrides the file value.
-func MergeConfig(fileConfig Config, cliArgs CLIArgs) MergedConfig {
-	merged := MergedConfig{
+// MergeConfig flattens a file-loaded Config into the MergedConfig structure
+// consumed by downstream CLI and sandbox code.
+func MergeConfig(fileConfig Config) MergedConfig {
+	return MergedConfig{
 		ExtraMounts:    slices.Clone(fileConfig.Defaults.ExtraMounts),
 		EnvPassthrough: slices.Clone(fileConfig.Defaults.EnvPassthrough),
 		SensitiveDirs:  slices.Clone(fileConfig.Defaults.SensitiveDirs),
 		Image:          fileConfig.Docker.Image,
 	}
-
-	if len(cliArgs.Mount) > 0 {
-		merged.ExtraMounts = append(merged.ExtraMounts, expandPaths(cliArgs.Mount)...)
-	}
-	if len(cliArgs.Env) > 0 {
-		merged.EnvPassthrough = append(merged.EnvPassthrough, cliArgs.Env...)
-	}
-	if cliArgs.Image != "" {
-		merged.Image = cliArgs.Image
-	}
-
-	return merged
 }
 
 func expandPaths(paths []string) []string {

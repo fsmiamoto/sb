@@ -70,14 +70,15 @@ func exitError(format string, args ...any) error {
 	return cli.Exit(msg, 1)
 }
 
-// loadMergedConfig loads config from the file (or default path) and returns it.
-func loadMergedConfig(cCtx *cli.Context) config.Config {
+// loadMergedConfig loads config from the file (or default path) and flattens
+// it into a MergedConfig ready for constructing a SandboxManager.
+func loadMergedConfig(cCtx *cli.Context) config.MergedConfig {
 	configPath := cCtx.String("config")
 	fileConfig, err := config.LoadConfig(configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 	}
-	return fileConfig
+	return config.MergeConfig(fileConfig)
 }
 
 // newManager creates a SandboxManager from a merged config.
@@ -180,16 +181,11 @@ func createCommand() *cli.Command {
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			fileConfig := loadMergedConfig(cCtx)
+			merged := loadMergedConfig(cCtx)
 
 			cliMounts := cCtx.StringSlice("mount")
 			cliEnvs := cCtx.StringSlice("env")
 			cliImage := cCtx.String("image")
-
-			// CLI mounts, envs, and image go through CreateOptions only.
-			// The manager handles config-level values internally; passing
-			// CLI values through MergeConfig as well would duplicate them.
-			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
 
 			mgr := newManager(merged)
 			defer func() { _ = mgr.Close() }()
@@ -236,9 +232,7 @@ func attachCommand() *cli.Command {
 		ArgsUsage:    "[name]",
 		BashComplete: completeSandboxNames,
 		Action: func(cCtx *cli.Context) error {
-			fileConfig := loadMergedConfig(cCtx)
-			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
-
+			merged := loadMergedConfig(cCtx)
 			mgr := newManager(merged)
 			defer func() { _ = mgr.Close() }()
 
@@ -276,9 +270,7 @@ func stopCommand() *cli.Command {
 		ArgsUsage:    "[name]",
 		BashComplete: completeSandboxNames,
 		Action: func(cCtx *cli.Context) error {
-			fileConfig := loadMergedConfig(cCtx)
-			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
-
+			merged := loadMergedConfig(cCtx)
 			mgr := newManager(merged)
 			defer func() { _ = mgr.Close() }()
 
@@ -319,9 +311,7 @@ func destroyCommand() *cli.Command {
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
-			fileConfig := loadMergedConfig(cCtx)
-			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
-
+			merged := loadMergedConfig(cCtx)
 			mgr := newManager(merged)
 			defer func() { _ = mgr.Close() }()
 
@@ -362,9 +352,7 @@ func listCommand() *cli.Command {
 		Name:  "list",
 		Usage: "List all sandboxes with status",
 		Action: func(cCtx *cli.Context) error {
-			fileConfig := loadMergedConfig(cCtx)
-			merged := config.MergeConfig(fileConfig, config.CLIArgs{})
-
+			merged := loadMergedConfig(cCtx)
 			mgr := newManager(merged)
 			defer func() { _ = mgr.Close() }()
 
