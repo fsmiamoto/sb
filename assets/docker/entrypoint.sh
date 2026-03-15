@@ -57,9 +57,16 @@ elif ! grep -q "^wheel:.*sandbox" /etc/group; then
     sed -i "s/^wheel:\(.*\)$/wheel:\1,sandbox/" /etc/group
 fi
 
-# Ensure home directory exists and is owned correctly
+# Ensure home directory structure exists
 mkdir -p /home/sandbox/.cache /home/sandbox/.local/share
-chown -R "$USER_ID:$GROUP_ID" /home/sandbox
+
+# Fix ownership of container-created paths only. Avoid recursive chown on the
+# entire home — bind-mounted directories (workspace, .claude, .gitconfig, etc.)
+# already have correct host ownership, and recursing into a large workspace would
+# be slow and unnecessarily update ctime on host files.
+chown "$USER_ID:$GROUP_ID" /home/sandbox /home/sandbox/.config 2>/dev/null || true
+chown -R "$USER_ID:$GROUP_ID" /home/sandbox/.cache /home/sandbox/.local
+[ -d /home/sandbox/go ] && chown -R "$USER_ID:$GROUP_ID" /home/sandbox/go
 
 # Drop privileges and execute the command
 exec setpriv --reuid="$USER_ID" --regid="$GROUP_ID" --init-groups "$@"
