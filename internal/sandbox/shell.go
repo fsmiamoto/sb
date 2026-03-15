@@ -90,7 +90,7 @@ func (m *SandboxManager) ExecShell(ctx context.Context, sandbox SandboxInfo) (in
 	m.initDefaults()
 
 	if !sandbox.hasContainerID() {
-		return 0, fmt.Errorf("sandbox '%s' has no container ID; it may need to be recreated", sandbox.Name)
+		return 0, sandbox.noContainerIDError()
 	}
 
 	uid, gid := m.getUIDGID()

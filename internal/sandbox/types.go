@@ -1,6 +1,9 @@
 package sandbox
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 // MountMode describes whether a bind mount is read-only or read-write.
 type MountMode string
@@ -42,6 +45,12 @@ func (s SandboxInfo) GetName() string {
 // hasContainerID reports whether the sandbox has a non-empty container ID.
 func (s SandboxInfo) hasContainerID() bool {
 	return s.ContainerID != nil && *s.ContainerID != ""
+}
+
+// noContainerIDError returns the standard error for a sandbox without a
+// container ID, used by Attach, Stop, and ExecShell guards.
+func (s SandboxInfo) noContainerIDError() error {
+	return fmt.Errorf("sandbox '%s' has no container ID; it may need to be recreated", s.Name)
 }
 
 // SensitiveDirs contains the built-in directories that should trigger a warning

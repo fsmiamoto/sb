@@ -49,6 +49,22 @@ func TestSandboxInfoHasContainerID(t *testing.T) {
 	}
 }
 
+func TestSandboxInfoNoContainerIDError(t *testing.T) {
+	t.Parallel()
+
+	info := SandboxInfo{Name: "sb-project-abc12345"}
+	err := info.noContainerIDError()
+
+	if err == nil {
+		t.Fatal("noContainerIDError() returned nil")
+	}
+
+	want := "sandbox 'sb-project-abc12345' has no container ID; it may need to be recreated"
+	if got := err.Error(); got != want {
+		t.Fatalf("noContainerIDError() = %q, want %q", got, want)
+	}
+}
+
 func TestSensitiveDirs(t *testing.T) {
 	t.Parallel()
 
