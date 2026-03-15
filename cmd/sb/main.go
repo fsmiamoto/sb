@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -127,7 +128,7 @@ func resolveSandboxByName(ctx context.Context, mgr *sandbox.SandboxManager, quer
 		lines = append(lines, fmt.Sprintf("  %s  (%s)", s.Name, s.Workspace))
 	}
 	lines = append(lines, "", "Use the full sandbox name or a more specific query.")
-	return sandbox.SandboxInfo{}, fmt.Errorf("%s", strings.Join(lines, "\n"))
+	return sandbox.SandboxInfo{}, errors.New(strings.Join(lines, "\n"))
 }
 
 // formatCreatedAt formats a Docker ISO timestamp for display.

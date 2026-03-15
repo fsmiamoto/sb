@@ -54,7 +54,7 @@ func completionCommand() *cli.Command {
 				Action: func(cCtx *cli.Context) error {
 					script, err := cCtx.App.ToFishCompletion()
 					if err != nil {
-						return cli.Exit(fmt.Sprintf("failed to generate fish completion: %v", err), 1)
+						return exitError("failed to generate fish completion: %v", err)
 					}
 					_, _ = fmt.Fprint(os.Stdout, script)
 					return nil
