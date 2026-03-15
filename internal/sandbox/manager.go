@@ -99,7 +99,7 @@ type SandboxManager struct {
 	mountBuilder       sandboxMountBuilder
 	getwd              func() (string, error)
 	getUIDGID          func() (int, int)
-	getenv             func(string) string
+	lookupenv          func(string) (string, bool)
 	ensureShellConfigs func() error
 	stdin              io.Reader
 	stdout             io.Writer
@@ -437,8 +437,8 @@ func (m *SandboxManager) initDefaults() {
 			return os.Getuid(), os.Getgid()
 		}
 	}
-	if m.getenv == nil {
-		m.getenv = os.Getenv
+	if m.lookupenv == nil {
+		m.lookupenv = os.LookupEnv
 	}
 	if m.ensureShellConfigs == nil {
 		m.ensureShellConfigs = NewShellConfigManager("").EnsureConfigs
@@ -607,8 +607,8 @@ func (m *SandboxManager) buildEnvironment(extraEnvVars []string) []string {
 			continue
 		}
 
-		value := m.getenv(entry)
-		if value != "" {
+		value, ok := m.lookupenv(entry)
+		if ok {
 			env[entry] = value
 		}
 	}

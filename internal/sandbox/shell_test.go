@@ -188,7 +188,7 @@ func TestSandboxManagerCreateUsesRealShellConfigManagerByDefault(t *testing.T) {
 			}, nil
 		},
 		getUIDGID: func() (int, int) { return 1000, 1001 },
-		getenv:    func(string) string { return "" },
+		lookupenv: func(string) (string, bool) { return "", false },
 	}
 
 	sandbox, err := manager.Create(ctx, CreateOptions{Workspace: workspace, Name: sandboxName})

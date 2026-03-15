@@ -155,14 +155,14 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 			},
 		},
 		getUIDGID: func() (int, int) { return 1000, 1001 },
-		getenv: func(key string) string {
+		lookupenv: func(key string) (string, bool) {
 			switch key {
 			case "TOKEN":
-				return "secret"
+				return "secret", true
 			case "EMPTY":
-				return ""
+				return "", false
 			default:
-				return ""
+				return "", false
 			}
 		},
 		ensureShellConfigs: func() error {
@@ -1611,7 +1611,7 @@ func TestSandboxManagerBuildEnvironment(t *testing.T) {
 		name           string
 		envPassthrough []string
 		extraEnvVars   []string
-		getenv         func(string) string
+		lookupenv      func(string) (string, bool)
 		uid, gid       int
 		want           []string
 	}{
@@ -1629,22 +1629,29 @@ func TestSandboxManagerBuildEnvironment(t *testing.T) {
 		{
 			name:           "passthrough vars resolved from environment",
 			envPassthrough: []string{"MY_TOKEN"},
-			getenv:         func(key string) string { return map[string]string{"MY_TOKEN": "secret"}[key] },
+			lookupenv:      func(key string) (string, bool) { v, ok := map[string]string{"MY_TOKEN": "secret"}[key]; return v, ok },
 			uid:            500, gid: 500,
 			want: []string{"HOST_GID=500", "HOST_UID=500", "MY_TOKEN=secret"},
 		},
 		{
-			name:           "empty passthrough vars are excluded",
+			name:           "unset passthrough vars are excluded",
 			envPassthrough: []string{"UNSET_VAR"},
-			getenv:         func(string) string { return "" },
+			lookupenv:      func(string) (string, bool) { return "", false },
 			uid:            1000, gid: 1000,
 			want: []string{"HOST_GID=1000", "HOST_UID=1000"},
+		},
+		{
+			name:           "passthrough var set to empty string is preserved",
+			envPassthrough: []string{"EMPTY_VAR"},
+			lookupenv:      func(string) (string, bool) { return "", true },
+			uid:            1000, gid: 1000,
+			want: []string{"EMPTY_VAR=", "HOST_GID=1000", "HOST_UID=1000"},
 		},
 		{
 			name:           "extra vars override passthrough",
 			envPassthrough: []string{"TOKEN"},
 			extraEnvVars:   []string{"TOKEN=override"},
-			getenv:         func(key string) string { return map[string]string{"TOKEN": "from-env"}[key] },
+			lookupenv:      func(key string) (string, bool) { v, ok := map[string]string{"TOKEN": "from-env"}[key]; return v, ok },
 			uid:            1000, gid: 1000,
 			want: []string{"HOST_GID=1000", "HOST_UID=1000", "TOKEN=override"},
 		},
@@ -1652,7 +1659,7 @@ func TestSandboxManagerBuildEnvironment(t *testing.T) {
 			name:           "passthrough and explicit are merged and sorted",
 			envPassthrough: []string{"ALPHA"},
 			extraEnvVars:   []string{"ZEBRA=last", "MIDDLE=mid"},
-			getenv:         func(key string) string { return map[string]string{"ALPHA": "first"}[key] },
+			lookupenv:      func(key string) (string, bool) { v, ok := map[string]string{"ALPHA": "first"}[key]; return v, ok },
 			uid:            0, gid: 0,
 			want: []string{"ALPHA=first", "HOST_GID=0", "HOST_UID=0", "MIDDLE=mid", "ZEBRA=last"},
 		},
@@ -1674,15 +1681,15 @@ func TestSandboxManagerBuildEnvironment(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			getenv := tc.getenv
-			if getenv == nil {
-				getenv = func(string) string { return "" }
+			lookupenv := tc.lookupenv
+			if lookupenv == nil {
+				lookupenv = func(string) (string, bool) { return "", false }
 			}
 
 			manager := &SandboxManager{
 				envPassthrough: tc.envPassthrough,
 				getUIDGID:      func() (int, int) { return tc.uid, tc.gid },
-				getenv:         getenv,
+				lookupenv:      lookupenv,
 			}
 
 			got := manager.buildEnvironment(tc.extraEnvVars)
@@ -2750,7 +2757,7 @@ func TestSandboxManagerCreateDoesNotDuplicateMountsWhenConfigAndCLIOverlap(t *te
 			}, nil
 		},
 		getUIDGID:          func() (int, int) { return 1000, 1001 },
-		getenv:             func(string) string { return "" },
+		lookupenv:          func(string) (string, bool) { return "", false },
 		ensureShellConfigs: func() error { return nil },
 	}
 
