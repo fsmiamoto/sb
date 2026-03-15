@@ -362,7 +362,7 @@ func TestSandboxManagerCreateRejectsExistingSandboxWithoutForceOrConfirmation(t 
 	if err == nil {
 		t.Fatal("Create() error = nil, want existing sandbox error")
 	}
-	if got, want := err.Error(), "Sandbox 'sb-project-f630ad93' already exists. Use --force to recreate."; got != want {
+	if got, want := err.Error(), "sandbox 'sb-project-f630ad93' already exists; use --force to recreate"; got != want {
 		t.Fatalf("Create() error = %q, want %q", got, want)
 	}
 }
@@ -384,7 +384,7 @@ func TestSandboxManagerCreateRejectsSensitiveWorkspaceWithoutForce(t *testing.T)
 	if err == nil {
 		t.Fatal("Create() error = nil, want sensitive workspace rejection")
 	}
-	if got, want := err.Error(), "Workspace is a sensitive directory. Use --force to override."; got != want {
+	if got, want := err.Error(), "workspace is a sensitive directory; use --force to override"; got != want {
 		t.Fatalf("Create() error = %q, want %q", got, want)
 	}
 }
@@ -1962,12 +1962,10 @@ func TestStringPointer(t *testing.T) {
 		t.Fatalf("*stringPointer(\"hello\") = %q, want %q", *got, "hello")
 	}
 
-	// Verify it returns a new pointer (not aliased to the input).
-	original := "test"
-	ptr := stringPointer(original)
-	original = "changed"
+	// Verify the returned pointer holds the expected value.
+	ptr := stringPointer("test")
 	if *ptr != "test" {
-		t.Fatalf("stringPointer should copy the value, got %q after mutating original", *ptr)
+		t.Fatalf("stringPointer(\"test\") = %q, want %q", *ptr, "test")
 	}
 }
 

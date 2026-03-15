@@ -15,8 +15,8 @@ import (
 
 	cerrdefs "github.com/containerd/errdefs"
 	buildtypes "github.com/docker/docker/api/types/build"
-	dockerclient "github.com/docker/docker/client"
 	dockerimage "github.com/docker/docker/api/types/image"
+	dockerclient "github.com/docker/docker/client"
 )
 
 type fakeImageClient struct {
@@ -579,7 +579,7 @@ func TestCreateBuildContextArchiveUsesRelativePaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("createBuildContextArchive() error = %v", err)
 	}
-	defer archive.Close()
+	defer func() { _ = archive.Close() }()
 
 	entries, files := readTarArchive(t, archive)
 	for _, name := range []string{"Dockerfile", "configs/nvim/init.lua"} {
@@ -692,7 +692,7 @@ func TestImageManagerInitDefaultsNilProvider(t *testing.T) {
 	if err == nil {
 		t.Fatal("getClient() error = nil, want 'not configured' error")
 	}
-	if !strings.Contains(err.Error(), "Docker client provider is not configured") {
+	if !strings.Contains(err.Error(), "docker client provider is not configured") {
 		t.Fatalf("getClient() error = %q, want 'not configured' message", err)
 	}
 }

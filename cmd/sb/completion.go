@@ -25,7 +25,7 @@ func completeSandboxNames(cCtx *cli.Context) {
 	}
 
 	for _, sb := range sandboxes {
-		fmt.Fprintln(cCtx.App.Writer, sb.Name)
+		_, _ = fmt.Fprintln(cCtx.App.Writer, sb.Name)
 	}
 }
 
@@ -38,7 +38,7 @@ func completionCommand() *cli.Command {
 				Name:  "bash",
 				Usage: "Generate bash completion script",
 				Action: func(cCtx *cli.Context) error {
-					fmt.Fprint(os.Stdout, bashCompletionScript)
+					_, _ = fmt.Fprint(os.Stdout, bashCompletionScript)
 					return nil
 				},
 			},
@@ -46,7 +46,7 @@ func completionCommand() *cli.Command {
 				Name:  "zsh",
 				Usage: "Generate zsh completion script",
 				Action: func(cCtx *cli.Context) error {
-					fmt.Fprint(os.Stdout, zshCompletionScript)
+					_, _ = fmt.Fprint(os.Stdout, zshCompletionScript)
 					return nil
 				},
 			},
@@ -58,7 +58,7 @@ func completionCommand() *cli.Command {
 					if err != nil {
 						return cli.Exit(fmt.Sprintf("failed to generate fish completion: %v", err), 1)
 					}
-					fmt.Fprint(os.Stdout, script)
+					_, _ = fmt.Fprint(os.Stdout, script)
 					return nil
 				},
 			},

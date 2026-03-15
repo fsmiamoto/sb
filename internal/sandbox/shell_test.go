@@ -24,10 +24,10 @@ func TestShellConfigManagerEnsureConfigsCopiesMissingDefaultsWithoutOverwritingE
 
 	manager := NewShellConfigManager(configDir)
 	manager.defaultsFS = fstest.MapFS{
-		"zshrc":                      {Data: []byte("export TEST=1\n"), Mode: 0o644},
-		"starship.toml":              {Data: []byte("format = '$all'\n"), Mode: 0o644},
-		"nvim/init.lua":              {Data: []byte("print('init')\n"), Mode: 0o644},
-		"nvim/lua/plugins/init.lua":  {Data: []byte("return {}\n"), Mode: 0o644},
+		"zshrc":                     {Data: []byte("export TEST=1\n"), Mode: 0o644},
+		"starship.toml":             {Data: []byte("format = '$all'\n"), Mode: 0o644},
+		"nvim/init.lua":             {Data: []byte("print('init')\n"), Mode: 0o644},
+		"nvim/lua/plugins/init.lua": {Data: []byte("return {}\n"), Mode: 0o644},
 	}
 
 	if err := manager.EnsureConfigs(); err != nil {
@@ -54,9 +54,9 @@ func TestShellConfigManagerEnsureConfigsUsesDefaultHomeConfigDir(t *testing.T) {
 
 	manager := NewShellConfigManager("")
 	manager.defaultsFS = fstest.MapFS{
-		"zshrc":             {Data: []byte("export DEFAULT=1\n"), Mode: 0o644},
-		"starship.toml":     {Data: []byte("format = '$directory'\n"), Mode: 0o644},
-		"nvim/init.lua":     {Data: []byte("vim.opt.number = true\n"), Mode: 0o644},
+		"zshrc":         {Data: []byte("export DEFAULT=1\n"), Mode: 0o644},
+		"starship.toml": {Data: []byte("format = '$directory'\n"), Mode: 0o644},
+		"nvim/init.lua": {Data: []byte("vim.opt.number = true\n"), Mode: 0o644},
 	}
 
 	if err := manager.EnsureConfigs(); err != nil {
@@ -142,7 +142,7 @@ func TestSandboxManagerExecShellRejectsMissingContainerID(t *testing.T) {
 	if err == nil {
 		t.Fatal("ExecShell() error = nil, want missing container ID error")
 	}
-	if got, want := err.Error(), "Sandbox 'sb-project-f630ad93' has no container ID. It may need to be recreated."; got != want {
+	if got, want := err.Error(), "sandbox 'sb-project-f630ad93' has no container ID; it may need to be recreated"; got != want {
 		t.Fatalf("ExecShell() error = %q, want %q", got, want)
 	}
 }

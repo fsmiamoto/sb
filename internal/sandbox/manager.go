@@ -145,10 +145,10 @@ func (m *SandboxManager) Create(ctx context.Context, opts CreateOptions) (Sandbo
 			if opts.Confirm != nil {
 				message := fmt.Sprintf("Sandbox '%s' already exists.\nDo you want to recreate it?", sandboxName)
 				if !opts.Confirm(message) {
-					return SandboxInfo{}, errors.New("Sandbox creation cancelled by user")
+					return SandboxInfo{}, errors.New("sandbox creation cancelled by user")
 				}
 			} else {
-				return SandboxInfo{}, fmt.Errorf("Sandbox '%s' already exists. Use --force to recreate.", sandboxName)
+				return SandboxInfo{}, fmt.Errorf("sandbox '%s' already exists; use --force to recreate", sandboxName)
 			}
 		}
 
@@ -166,10 +166,10 @@ func (m *SandboxManager) Create(ctx context.Context, opts CreateOptions) (Sandbo
 				sensitivePath,
 			)
 			if !opts.Confirm(message) {
-				return SandboxInfo{}, errors.New("Sandbox creation cancelled by user")
+				return SandboxInfo{}, errors.New("sandbox creation cancelled by user")
 			}
 		} else {
-			return SandboxInfo{}, errors.New("Workspace is a sensitive directory. Use --force to override.")
+			return SandboxInfo{}, errors.New("workspace is a sensitive directory; use --force to override")
 		}
 	}
 
@@ -254,7 +254,7 @@ func (m *SandboxManager) Attach(ctx context.Context, name string, workspace stri
 	}
 
 	if !sandbox.hasContainerID() {
-		return SandboxInfo{}, fmt.Errorf("Sandbox '%s' has no container ID. It may need to be recreated.", sandbox.Name)
+		return SandboxInfo{}, fmt.Errorf("sandbox '%s' has no container ID; it may need to be recreated", sandbox.Name)
 	}
 
 	status, err := m.GetContainerStatus(ctx, sandbox)
@@ -284,7 +284,7 @@ func (m *SandboxManager) Stop(ctx context.Context, name string, workspace string
 	}
 
 	if !sandbox.hasContainerID() {
-		return SandboxInfo{}, fmt.Errorf("Sandbox '%s' has no container ID. It may need to be recreated.", sandbox.Name)
+		return SandboxInfo{}, fmt.Errorf("sandbox '%s' has no container ID; it may need to be recreated", sandbox.Name)
 	}
 
 	status, err := m.GetContainerStatus(ctx, sandbox)
@@ -322,10 +322,10 @@ func (m *SandboxManager) Destroy(ctx context.Context, opts DestroyOptions) (Sand
 		if opts.Confirm != nil {
 			message := fmt.Sprintf("Are you sure you want to destroy sandbox '%s'?\nThis will stop and remove the container.", sandbox.Name)
 			if !opts.Confirm(message) {
-				return SandboxInfo{}, errors.New("Sandbox destruction cancelled by user")
+				return SandboxInfo{}, errors.New("sandbox destruction cancelled by user")
 			}
 		} else {
-			return SandboxInfo{}, fmt.Errorf("Use --force to destroy sandbox '%s' without confirmation.", sandbox.Name)
+			return SandboxInfo{}, fmt.Errorf("use --force to destroy sandbox '%s' without confirmation", sandbox.Name)
 		}
 	}
 
@@ -482,7 +482,7 @@ func (m *SandboxManager) resolveSandbox(ctx context.Context, name string, worksp
 			return SandboxInfo{}, err
 		}
 		if sandbox == nil {
-			return SandboxInfo{}, fmt.Errorf("Sandbox '%s' not found", name)
+			return SandboxInfo{}, fmt.Errorf("sandbox '%s' not found", name)
 		}
 		return *sandbox, nil
 	}
@@ -625,10 +625,10 @@ func sandboxInfoFromInspect(inspect containertypes.InspectResponse) SandboxInfo 
 
 	var id, createdAt string
 	if inspect.ContainerJSONBase != nil {
-		id = inspect.ContainerJSONBase.ID
-		createdAt = inspect.ContainerJSONBase.Created
+		id = inspect.ID
+		createdAt = inspect.Created
 		if name == "" {
-			name = strings.TrimPrefix(inspect.ContainerJSONBase.Name, "/")
+			name = strings.TrimPrefix(inspect.Name, "/")
 		}
 	}
 

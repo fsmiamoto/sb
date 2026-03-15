@@ -98,7 +98,7 @@ func resolveSandboxByName(ctx context.Context, mgr *sandbox.SandboxManager, quer
 	}
 
 	if len(matches) == 0 {
-		return sandbox.SandboxInfo{}, fmt.Errorf("Sandbox '%s' not found", query)
+		return sandbox.SandboxInfo{}, fmt.Errorf("sandbox '%s' not found", query)
 	}
 
 	if len(matches) == 1 {
@@ -453,5 +453,5 @@ func printSandboxTable(ctx context.Context, mgr *sandbox.SandboxManager, sandbox
 		return base
 	})
 
-	lipgloss.Println(t)
+	_, _ = lipgloss.Println(t)
 }

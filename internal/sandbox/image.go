@@ -138,7 +138,7 @@ func (m *ImageManager) initDefaults() {
 	if m.getClient == nil {
 		if m.provider == nil {
 			m.getClient = func(context.Context) (dockerImageClient, error) {
-				return nil, errors.New("Docker client provider is not configured")
+				return nil, errors.New("docker client provider is not configured")
 			}
 		} else {
 			m.getClient = func(ctx context.Context) (dockerImageClient, error) {
