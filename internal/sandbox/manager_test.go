@@ -429,11 +429,7 @@ func TestCreateForceRecreatesExisting(t *testing.T) {
 	manager := &SandboxManager{
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					if id == "old-id" {
-						// destroyContainer inspects it — return stopped
-						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "exited"), nil
-					}
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
 					// getSandbox — existing sandbox
 					return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "exited"), nil
 				},
@@ -470,14 +466,8 @@ func TestCreateDestroyContainerErrorDuringRecreate(t *testing.T) {
 	manager := &SandboxManager{
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					if id == "old-id" {
-						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "running"), nil
-					}
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
 					return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "running"), nil
-				},
-				stopFunc: func(_ context.Context, _ string, _ containertypes.StopOptions) error {
-					return nil
 				},
 				removeFunc: func(_ context.Context, _ string, _ containertypes.RemoveOptions) error {
 					return errors.New("remove failed")
@@ -699,11 +689,7 @@ func TestCreateExistingConfirmProceeds(t *testing.T) {
 	manager := &SandboxManager{
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					if id == "old-id" {
-						// destroyContainer inspect — return stopped so no stop needed
-						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "exited"), nil
-					}
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
 					// getSandbox — existing sandbox
 					return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "running"), nil
 				},
@@ -1124,28 +1110,20 @@ func TestSandboxManagerStopStopsRunningSandboxResolvedFromWorkspace(t *testing.T
 	}
 }
 
-func TestSandboxManagerDestroyStopsAndRemovesContainerWhenConfirmed(t *testing.T) {
+func TestSandboxManagerDestroyRemovesContainerWhenConfirmed(t *testing.T) {
 	ctx := context.Background()
-	stoppedIDs := make([]string, 0)
 	removedIDs := make([]string, 0)
 	confirmedMessages := make([]string, 0)
 	manager := &SandboxManager{
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
-					switch containerID {
-					case "sb-project-f630ad93", "running-id":
-						return managedInspect("running-id", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "running"), nil
-					default:
-						t.Fatalf("ContainerInspect() id = %q, want generated sandbox name or container ID", containerID)
-						return containertypes.InspectResponse{}, nil
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return managedInspect("running-id", "sb-project-f630ad93", "/tmp/project", "2026-03-08T10:00:00Z", "running"), nil
+				},
+				removeFunc: func(_ context.Context, containerID string, opts containertypes.RemoveOptions) error {
+					if !opts.Force {
+						t.Fatal("RemoveOptions.Force = false, want true")
 					}
-				},
-				stopFunc: func(ctx context.Context, containerID string, options containertypes.StopOptions) error {
-					stoppedIDs = append(stoppedIDs, containerID)
-					return nil
-				},
-				removeFunc: func(ctx context.Context, containerID string, options containertypes.RemoveOptions) error {
 					removedIDs = append(removedIDs, containerID)
 					return nil
 				},
@@ -1166,9 +1144,6 @@ func TestSandboxManagerDestroyStopsAndRemovesContainerWhenConfirmed(t *testing.T
 	wantMessages := []string{"Are you sure you want to destroy sandbox 'sb-project-f630ad93'?\nThis will stop and remove the container."}
 	if !slices.Equal(confirmedMessages, wantMessages) {
 		t.Fatalf("Destroy() confirmation messages = %#v, want %#v", confirmedMessages, wantMessages)
-	}
-	if !slices.Equal(stoppedIDs, []string{"running-id"}) {
-		t.Fatalf("Destroy() stopped IDs = %#v, want %#v", stoppedIDs, []string{"running-id"})
 	}
 	if !slices.Equal(removedIDs, []string{"running-id"}) {
 		t.Fatalf("Destroy() removed IDs = %#v, want %#v", removedIDs, []string{"running-id"})
@@ -2149,8 +2124,8 @@ func TestDestroyContainerAlreadyGone(t *testing.T) {
 	manager := &SandboxManager{
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
-					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
+				removeFunc: func(_ context.Context, _ string, _ containertypes.RemoveOptions) error {
+					return cerrdefs.ErrNotFound
 				},
 			}, nil
 		},
@@ -2165,30 +2140,17 @@ func TestDestroyContainerAlreadyGone(t *testing.T) {
 	}
 }
 
-func TestDestroyContainerStoppedThenRemoved(t *testing.T) {
+func TestDestroyContainerForceRemoved(t *testing.T) {
 	t.Parallel()
 	var removedID string
+	var removedOpts containertypes.RemoveOptions
 
 	manager := &SandboxManager{
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					return containertypes.InspectResponse{
-						ContainerJSONBase: &containertypes.ContainerJSONBase{
-							ID:   id,
-							Name: "/sb-test-abc123",
-							State: &containertypes.State{
-								Status: "exited",
-							},
-						},
-					}, nil
-				},
-				stopFunc: func(_ context.Context, _ string, _ containertypes.StopOptions) error {
-					t.Fatal("ContainerStop should not be called for non-running container")
-					return nil
-				},
-				removeFunc: func(_ context.Context, id string, _ containertypes.RemoveOptions) error {
+				removeFunc: func(_ context.Context, id string, opts containertypes.RemoveOptions) error {
 					removedID = id
+					removedOpts = opts
 					return nil
 				},
 			}, nil
@@ -2205,177 +2167,8 @@ func TestDestroyContainerStoppedThenRemoved(t *testing.T) {
 	if removedID != "deadbeef" {
 		t.Fatalf("removedID = %q, want %q", removedID, "deadbeef")
 	}
-}
-
-func TestDestroyContainerRunningStoppedThenRemoved(t *testing.T) {
-	t.Parallel()
-	var stoppedID, removedID string
-
-	manager := &SandboxManager{
-		getClient: func(context.Context) (dockerSandboxClient, error) {
-			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					return containertypes.InspectResponse{
-						ContainerJSONBase: &containertypes.ContainerJSONBase{
-							ID:   id,
-							Name: "/sb-test-abc123",
-							State: &containertypes.State{
-								Status: "running",
-							},
-						},
-					}, nil
-				},
-				stopFunc: func(_ context.Context, id string, _ containertypes.StopOptions) error {
-					stoppedID = id
-					return nil
-				},
-				removeFunc: func(_ context.Context, id string, _ containertypes.RemoveOptions) error {
-					removedID = id
-					return nil
-				},
-			}, nil
-		},
-	}
-
-	err := manager.destroyContainer(context.Background(), SandboxInfo{
-		Name:        "sb-test-abc123",
-		ContainerID: "deadbeef",
-	})
-	if err != nil {
-		t.Fatalf("destroyContainer() error = %v, want nil", err)
-	}
-	if stoppedID != "deadbeef" {
-		t.Fatalf("stoppedID = %q, want %q", stoppedID, "deadbeef")
-	}
-	if removedID != "deadbeef" {
-		t.Fatalf("removedID = %q, want %q", removedID, "deadbeef")
-	}
-}
-
-func TestDestroyContainerDisappearsAfterStop(t *testing.T) {
-	t.Parallel()
-	manager := &SandboxManager{
-		getClient: func(context.Context) (dockerSandboxClient, error) {
-			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					return containertypes.InspectResponse{
-						ContainerJSONBase: &containertypes.ContainerJSONBase{
-							ID:   id,
-							Name: "/sb-test-abc123",
-							State: &containertypes.State{
-								Status: "running",
-							},
-						},
-					}, nil
-				},
-				stopFunc: func(_ context.Context, _ string, _ containertypes.StopOptions) error {
-					return cerrdefs.ErrNotFound
-				},
-				removeFunc: func(_ context.Context, _ string, _ containertypes.RemoveOptions) error {
-					t.Fatal("ContainerRemove should not be called when stop returns not-found")
-					return nil
-				},
-			}, nil
-		},
-	}
-
-	err := manager.destroyContainer(context.Background(), SandboxInfo{
-		Name:        "sb-test-abc123",
-		ContainerID: "deadbeef",
-	})
-	if err != nil {
-		t.Fatalf("destroyContainer() error = %v, want nil for container gone during stop", err)
-	}
-}
-
-func TestDestroyContainerDisappearsAfterRemove(t *testing.T) {
-	t.Parallel()
-	manager := &SandboxManager{
-		getClient: func(context.Context) (dockerSandboxClient, error) {
-			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					return containertypes.InspectResponse{
-						ContainerJSONBase: &containertypes.ContainerJSONBase{
-							ID:   id,
-							Name: "/sb-test-abc123",
-							State: &containertypes.State{
-								Status: "exited",
-							},
-						},
-					}, nil
-				},
-				removeFunc: func(_ context.Context, _ string, _ containertypes.RemoveOptions) error {
-					return cerrdefs.ErrNotFound
-				},
-			}, nil
-		},
-	}
-
-	err := manager.destroyContainer(context.Background(), SandboxInfo{
-		Name:        "sb-test-abc123",
-		ContainerID: "deadbeef",
-	})
-	if err != nil {
-		t.Fatalf("destroyContainer() error = %v, want nil for container gone during remove", err)
-	}
-}
-
-func TestDestroyContainerInspectError(t *testing.T) {
-	t.Parallel()
-	manager := &SandboxManager{
-		getClient: func(context.Context) (dockerSandboxClient, error) {
-			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
-					return containertypes.InspectResponse{}, errors.New("connection refused")
-				},
-			}, nil
-		},
-	}
-
-	err := manager.destroyContainer(context.Background(), SandboxInfo{
-		Name:        "sb-test-abc123",
-		ContainerID: "deadbeef",
-	})
-	if err == nil {
-		t.Fatal("destroyContainer() error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "inspect container") {
-		t.Fatalf("error = %q, want it to mention 'inspect container'", err.Error())
-	}
-}
-
-func TestDestroyContainerStopError(t *testing.T) {
-	t.Parallel()
-	manager := &SandboxManager{
-		getClient: func(context.Context) (dockerSandboxClient, error) {
-			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					return containertypes.InspectResponse{
-						ContainerJSONBase: &containertypes.ContainerJSONBase{
-							ID:   id,
-							Name: "/sb-test-abc123",
-							State: &containertypes.State{
-								Status: "running",
-							},
-						},
-					}, nil
-				},
-				stopFunc: func(_ context.Context, _ string, _ containertypes.StopOptions) error {
-					return errors.New("timeout")
-				},
-			}, nil
-		},
-	}
-
-	err := manager.destroyContainer(context.Background(), SandboxInfo{
-		Name:        "sb-test-abc123",
-		ContainerID: "deadbeef",
-	})
-	if err == nil {
-		t.Fatal("destroyContainer() error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "stop sandbox") {
-		t.Fatalf("error = %q, want it to mention 'stop sandbox'", err.Error())
+	if !removedOpts.Force {
+		t.Fatal("RemoveOptions.Force = false, want true")
 	}
 }
 
@@ -2384,17 +2177,6 @@ func TestDestroyContainerRemoveError(t *testing.T) {
 	manager := &SandboxManager{
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					return containertypes.InspectResponse{
-						ContainerJSONBase: &containertypes.ContainerJSONBase{
-							ID:   id,
-							Name: "/sb-test-abc123",
-							State: &containertypes.State{
-								Status: "exited",
-							},
-						},
-					}, nil
-				},
 				removeFunc: func(_ context.Context, _ string, _ containertypes.RemoveOptions) error {
 					return errors.New("permission denied")
 				},

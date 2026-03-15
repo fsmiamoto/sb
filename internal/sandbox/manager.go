@@ -529,24 +529,7 @@ func (m *SandboxManager) destroyContainer(ctx context.Context, sandbox SandboxIn
 		return err
 	}
 
-	inspect, err := cli.ContainerInspect(ctx, sandbox.ContainerID)
-	if err != nil {
-		if cerrdefs.IsNotFound(err) {
-			return nil
-		}
-		return fmt.Errorf("inspect container for sandbox %q: %w", sandbox.Name, err)
-	}
-
-	if inspect.State != nil && inspect.State.Status == "running" {
-		if err := cli.ContainerStop(ctx, sandbox.ContainerID, containertypes.StopOptions{}); err != nil {
-			if cerrdefs.IsNotFound(err) {
-				return nil
-			}
-			return fmt.Errorf("stop sandbox %q before removal: %w", sandbox.Name, err)
-		}
-	}
-
-	if err := cli.ContainerRemove(ctx, sandbox.ContainerID, containertypes.RemoveOptions{}); err != nil {
+	if err := cli.ContainerRemove(ctx, sandbox.ContainerID, containertypes.RemoveOptions{Force: true}); err != nil {
 		if cerrdefs.IsNotFound(err) {
 			return nil
 		}
