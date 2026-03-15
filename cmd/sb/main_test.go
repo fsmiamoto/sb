@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -113,8 +114,8 @@ func TestExitError(t *testing.T) {
 				t.Fatalf("exitError().Error() = %q, want %q", got, tc.wantMsg)
 			}
 
-			exitErr, ok := err.(cli.ExitCoder)
-			if !ok {
+			var exitErr cli.ExitCoder
+			if !errors.As(err, &exitErr) {
 				t.Fatal("exitError() did not return a cli.ExitCoder")
 			}
 			if code := exitErr.ExitCode(); code != 1 {
