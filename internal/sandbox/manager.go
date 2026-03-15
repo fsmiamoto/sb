@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -589,8 +590,8 @@ func (m *SandboxManager) resolveWorkspacePath(workspace string) (string, error) 
 func (m *SandboxManager) buildEnvironment(extraEnvVars []string) []string {
 	uid, gid := m.getUIDGID()
 	env := map[string]string{
-		"HOST_UID": fmt.Sprintf("%d", uid),
-		"HOST_GID": fmt.Sprintf("%d", gid),
+		"HOST_UID": strconv.Itoa(uid),
+		"HOST_GID": strconv.Itoa(gid),
 	}
 
 	allEnvVars := slices.Concat(m.envPassthrough, extraEnvVars)
@@ -669,6 +670,5 @@ func stringPointer(value string) *string {
 	if value == "" {
 		return nil
 	}
-	valueCopy := value
-	return &valueCopy
+	return &value
 }
