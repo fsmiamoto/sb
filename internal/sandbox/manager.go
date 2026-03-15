@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -609,7 +609,7 @@ func (m *SandboxManager) buildEnvironment(extraEnvVars []string) []string {
 	for key := range env {
 		keys = append(keys, key)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	result := make([]string, 0, len(keys))
 	for _, key := range keys {

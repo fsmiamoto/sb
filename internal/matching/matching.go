@@ -2,7 +2,7 @@ package matching
 
 import (
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -93,8 +93,8 @@ func FindMatchingSandboxes[T NamedSandbox](query string, sandboxes []T) []T {
 		return []T{}
 	}
 
-	sort.SliceStable(scored, func(i int, j int) bool {
-		return scored[i].score < scored[j].score
+	slices.SortStableFunc(scored, func(a, b scoredSandbox[T]) int {
+		return a.score - b.score
 	})
 
 	if scored[0].score == 0 {
