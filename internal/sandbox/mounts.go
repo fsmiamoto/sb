@@ -143,24 +143,13 @@ func expandAndAbsPath(path string) (string, error) {
 
 func mapContainerPath(hostPath string) string {
 	switch {
-	case hostPath == "~", strings.HasPrefix(hostPath, "~/"), strings.HasPrefix(hostPath, "~\\"):
-		// Continue below.
+	case hostPath == "~":
+		return sandboxHomeDir
+	case strings.HasPrefix(hostPath, "~/"), strings.HasPrefix(hostPath, "~\\"):
+		return sandboxHomeDir + "/" + filepath.ToSlash(filepath.Clean(hostPath[2:]))
 	default:
 		return hostPath
 	}
-
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return hostPath
-	}
-
-	expandedHost := pathutil.ExpandHome(hostPath)
-	relPath, err := filepath.Rel(home, expandedHost)
-	if err != nil {
-		return hostPath
-	}
-
-	return sandboxHomeDir + "/" + filepath.ToSlash(relPath)
 }
 
 func pathExists(path string) bool {
