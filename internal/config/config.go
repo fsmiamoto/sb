@@ -153,7 +153,7 @@ func expandHome(path string) string {
 	}
 
 	home, err := os.UserHomeDir()
-	if err != nil {
+	if err != nil || home == "" {
 		return path
 	}
 

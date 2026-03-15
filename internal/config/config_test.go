@@ -164,6 +164,50 @@ func TestLoadConfig(t *testing.T) {
 		assertConfigEqual(t, config, want)
 	})
 
+	t.Run("sensitive dirs expanded", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		configFile := filepath.Join(t.TempDir(), "config.toml")
+		writeFile(t, configFile, "[defaults]\nsensitive_dirs = [\"~/important\", \"/opt/data\"]\n")
+
+		config, err := LoadConfig(configFile)
+		if err != nil {
+			t.Fatalf("LoadConfig returned unexpected error: %v", err)
+		}
+
+		want := DefaultConfig()
+		want.Defaults.SensitiveDirs = []string{filepath.Join(home, "important"), "/opt/data"}
+		assertConfigEqual(t, config, want)
+	})
+
+	t.Run("all defaults fields together", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		configFile := filepath.Join(t.TempDir(), "config.toml")
+		writeFile(t, configFile, `[defaults]
+extra_mounts = ["~/mounts/a"]
+env_passthrough = ["TOKEN", "SECRET"]
+sensitive_dirs = ["~/critical"]
+
+[docker]
+image = "myimage:v1"
+`)
+
+		config, err := LoadConfig(configFile)
+		if err != nil {
+			t.Fatalf("LoadConfig returned unexpected error: %v", err)
+		}
+
+		want := DefaultConfig()
+		want.Defaults.ExtraMounts = []string{filepath.Join(home, "mounts/a")}
+		want.Defaults.EnvPassthrough = []string{"TOKEN", "SECRET"}
+		want.Defaults.SensitiveDirs = []string{filepath.Join(home, "critical")}
+		want.Docker.Image = "myimage:v1"
+		assertConfigEqual(t, config, want)
+	})
+
 	t.Run("ignores invalid types", func(t *testing.T) {
 		configFile := filepath.Join(t.TempDir(), "config.toml")
 		writeFile(t, configFile, "[defaults]\nextra_mounts = \"not-a-list\"\nenv_passthrough = 42\n")
