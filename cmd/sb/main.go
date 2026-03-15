@@ -91,6 +91,19 @@ func newManager(merged config.MergedConfig) *sandbox.SandboxManager {
 	})
 }
 
+// resolveNameArg extracts the sandbox name from the first positional argument
+// using fuzzy matching. Returns empty string if no argument is provided.
+func resolveNameArg(ctx context.Context, mgr *sandbox.SandboxManager, cCtx *cli.Context) (string, error) {
+	if cCtx.NArg() == 0 {
+		return "", nil
+	}
+	resolved, err := resolveSandboxByName(ctx, mgr, cCtx.Args().First())
+	if err != nil {
+		return "", err
+	}
+	return resolved.Name, nil
+}
+
 // resolveSandboxByName uses fuzzy matching to find a unique sandbox.
 func resolveSandboxByName(ctx context.Context, mgr *sandbox.SandboxManager, query string) (sandbox.SandboxInfo, error) {
 	matches, err := mgr.FindSandboxes(ctx, query)
@@ -238,13 +251,9 @@ func attachCommand() *cli.Command {
 
 			ctx := context.Background()
 
-			var name string
-			if cCtx.NArg() > 0 {
-				resolved, err := resolveSandboxByName(ctx, mgr, cCtx.Args().First())
-				if err != nil {
-					return exitError("%v", err)
-				}
-				name = resolved.Name
+			name, err := resolveNameArg(ctx, mgr, cCtx)
+			if err != nil {
+				return exitError("%v", err)
 			}
 
 			sb, err := mgr.Attach(ctx, name, "")
@@ -276,13 +285,9 @@ func stopCommand() *cli.Command {
 
 			ctx := context.Background()
 
-			var name string
-			if cCtx.NArg() > 0 {
-				resolved, err := resolveSandboxByName(ctx, mgr, cCtx.Args().First())
-				if err != nil {
-					return exitError("%v", err)
-				}
-				name = resolved.Name
+			name, err := resolveNameArg(ctx, mgr, cCtx)
+			if err != nil {
+				return exitError("%v", err)
 			}
 
 			sb, err := mgr.Stop(ctx, name, "")
@@ -323,13 +328,9 @@ func destroyCommand() *cli.Command {
 				confirmFunc = confirm
 			}
 
-			var name string
-			if cCtx.NArg() > 0 {
-				resolved, err := resolveSandboxByName(ctx, mgr, cCtx.Args().First())
-				if err != nil {
-					return exitError("%v", err)
-				}
-				name = resolved.Name
+			name, err := resolveNameArg(ctx, mgr, cCtx)
+			if err != nil {
+				return exitError("%v", err)
 			}
 
 			sb, err := mgr.Destroy(ctx, sandbox.DestroyOptions{
