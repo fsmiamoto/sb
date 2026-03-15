@@ -1,9 +1,21 @@
 #!/bin/bash
+set -euo pipefail
+
 # Entrypoint script that creates a user entry for the specified UID/GID
 # and then drops privileges to run as that user.
 
 USER_ID="${HOST_UID:-1000}"
 GROUP_ID="${HOST_GID:-1000}"
+
+# Validate that UID and GID are non-negative integers
+if ! [[ "$USER_ID" =~ ^[0-9]+$ ]]; then
+    echo "error: HOST_UID must be a non-negative integer, got '$USER_ID'" >&2
+    exit 1
+fi
+if ! [[ "$GROUP_ID" =~ ^[0-9]+$ ]]; then
+    echo "error: HOST_GID must be a non-negative integer, got '$GROUP_ID'" >&2
+    exit 1
+fi
 
 # Create group entry named "sandbox" with the specified GID
 # Remove any existing group with this GID first to avoid conflicts

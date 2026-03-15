@@ -62,8 +62,10 @@ RUN pacman -Syu --noconfirm && \
     mesa \
     && pacman -Scc --noconfirm
 
-# Configure passwordless sudo for wheel group
-RUN echo '%wheel ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+# Configure passwordless sudo for wheel group via drop-in file
+# (avoids modifying /etc/sudoers directly, which bypasses visudo syntax checks)
+RUN echo '%wheel ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/wheel-nopasswd && \
+    chmod 0440 /etc/sudoers.d/wheel-nopasswd
 
 # Install Claude Code to /home/sandbox/.local/bin
 RUN HOME=/home/sandbox bash -c 'curl -fsSL https://claude.ai/install.sh | bash'
