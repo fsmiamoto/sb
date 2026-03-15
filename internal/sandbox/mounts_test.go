@@ -3,7 +3,6 @@ package sandbox
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"testing"
 
@@ -91,7 +90,7 @@ func TestMountBuilderBuildIncludesWorkspaceDefaultsAndExtraMounts(t *testing.T) 
 		{Type: dockermount.TypeBind, Source: cliExtra, Target: "/home/sandbox/cli-extra.env", ReadOnly: true},
 	}
 
-	if !reflect.DeepEqual(gotMounts, wantMounts) {
+	if !slices.Equal(gotMounts, wantMounts) {
 		t.Fatalf("Build() mounts = %#v, want %#v", gotMounts, wantMounts)
 	}
 
@@ -129,7 +128,7 @@ func TestMountBuilderBuildKeepsExpandedExtraMountTargetAsAbsolutePath(t *testing
 		Target:   expandedExtra,
 		ReadOnly: true,
 	}
-	if !reflect.DeepEqual(extra, want) {
+	if extra != want {
 		t.Fatalf("expanded extra mount = %#v, want %#v", extra, want)
 	}
 }
@@ -168,7 +167,7 @@ func TestDeduplicateMounts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := deduplicateMounts(tc.mounts)
-			if !reflect.DeepEqual(got, tc.want) {
+			if !slices.Equal(got, tc.want) {
 				t.Fatalf("deduplicateMounts() = %#v, want %#v", got, tc.want)
 			}
 		})

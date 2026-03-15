@@ -7,7 +7,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -218,7 +217,7 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 	if !maps.Equal(createdConfig.Labels, wantLabels) {
 		t.Fatalf("ContainerCreate() labels = %#v, want %#v", createdConfig.Labels, wantLabels)
 	}
-	if !reflect.DeepEqual(createdHostConfig.Mounts, mounts) {
+	if !slices.Equal(createdHostConfig.Mounts, mounts) {
 		t.Fatalf("ContainerCreate() mounts = %#v, want %#v", createdHostConfig.Mounts, mounts)
 	}
 	wantWarns := []string{"Mount path does not exist, skipping: ~/missing"}
