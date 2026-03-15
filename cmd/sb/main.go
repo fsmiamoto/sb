@@ -436,11 +436,7 @@ func printSandboxTable(sandboxes []sandbox.SandboxInfo) {
 		BorderStyle(borderStyle)
 
 	for _, sb := range sandboxes {
-		raw := sb.Status
-		if raw == "" {
-			raw = "unknown"
-		}
-		display, sty := statusText(raw)
+		display, sty := statusText(sb.Status)
 		statusStyles = append(statusStyles, sty)
 		t.Row(sb.Name, sb.Workspace, display, formatCreatedAt(sb.CreatedAt))
 	}
@@ -478,11 +474,7 @@ type sandboxJSON struct {
 func printSandboxJSON(w io.Writer, sandboxes []sandbox.SandboxInfo) error {
 	items := make([]sandboxJSON, 0, len(sandboxes))
 	for _, sb := range sandboxes {
-		status := sb.Status
-		if status == "" {
-			status = "unknown"
-		}
-		display, _ := statusText(status)
+		display, _ := statusText(sb.Status)
 		items = append(items, sandboxJSON{
 			Name:      sb.Name,
 			Workspace: sb.Workspace,
