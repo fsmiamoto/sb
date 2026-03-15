@@ -18,7 +18,6 @@ func TestEmbeddedDockerContextContainsExpectedFiles(t *testing.T) {
 	}
 
 	for _, name := range expectedFiles {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
