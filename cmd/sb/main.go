@@ -379,8 +379,13 @@ var (
 	greenStyle  = lipgloss.NewStyle().Foreground(lipgloss.Green)
 	yellowStyle = lipgloss.NewStyle().Foreground(lipgloss.Yellow)
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
-	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.White)
 	borderStyle = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+
+	// Cell styles used by StyleFunc — computed once instead of per-cell.
+	cellBase    = lipgloss.NewStyle().PaddingLeft(1).PaddingRight(1)
+	headerCell  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.White).PaddingLeft(1).PaddingRight(1)
+	nameCell    = cellBase.Foreground(lipgloss.Cyan)
+	createdCell = cellBase.Foreground(lipgloss.BrightBlack)
 
 	// nanosecondTruncateRe truncates fractional seconds beyond 6 digits
 	// in Docker timestamps so Go's time.Parse can handle them.
@@ -427,24 +432,21 @@ func printSandboxTable(sandboxes []sandbox.SandboxInfo) {
 	}
 
 	t.StyleFunc(func(row, col int) lipgloss.Style {
-		base := lipgloss.NewStyle().PaddingLeft(1).PaddingRight(1)
 		if row == table.HeaderRow {
-			return headerStyle.PaddingLeft(1).PaddingRight(1)
+			return headerCell
 		}
 		switch col {
 		case colName:
-			return base.Foreground(lipgloss.Cyan)
-		case colWorkspace:
-			return base
+			return nameCell
 		case colStatus:
 			if row >= 0 && row < len(statusStyles) {
-				return base.Inherit(statusStyles[row])
+				return cellBase.Inherit(statusStyles[row])
 			}
-			return base
+			return cellBase
 		case colCreated:
-			return base.Foreground(lipgloss.BrightBlack)
+			return createdCell
 		}
-		return base
+		return cellBase
 	})
 
 	_, _ = lipgloss.Println(t)
