@@ -9,34 +9,51 @@ run:
 linters:
   default: none
   enable:
+    - asasalint
     - asciicheck
+    - bidichk
     - bodyclose
+    - containedctx
     - copyloopvar
+    - dogsled
     - dupword
     - durationcheck
     - errcheck
+    - errchkjson
     - errorlint
     - errname
     - exhaustive
+    - exptostd
     - fatcontext
     - forcetypeassert
+    - gochecknoinits
     - gocheckcompilerdirectives
+    - gochecksumtype
     - gocritic
+    - godoclint
     - goprintffuncname
     - govet
+    - iface
     - ineffassign
     - intrange
+    - iotamixing
+    - makezero
     - mirror
     - misspell
     - modernize
+    - musttag
     - nakedret
     - nilerr
     - nilnesserr
     - noctx
+    - nonamedreturns
+    - nosprintfhostport
     - perfsprint
     - predeclared
+    - reassign
     - recvcheck
     - staticcheck
+    - testableexamples
     - thelper
     - unconvert
     - unparam
