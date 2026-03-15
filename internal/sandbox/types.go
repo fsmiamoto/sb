@@ -13,6 +13,9 @@ const (
 
 	// DefaultImageName is the bundled sb sandbox image tag.
 	DefaultImageName = "sb-sandbox:latest"
+
+	// sandboxHomeDir is the home directory for the sandbox user inside the container.
+	sandboxHomeDir = "/home/sandbox"
 )
 
 // MountSpec describes a bind mount between the host and sandbox container.
@@ -52,47 +55,47 @@ var SensitiveDirs = buildSensitiveDirs()
 var DefaultMounts = []MountSpec{
 	{
 		Host:      "~/.claude/",
-		Container: "/home/sandbox/.claude/",
+		Container: sandboxHomeDir + "/.claude/",
 		Mode:      MountModeReadWrite,
 	},
 	{
 		Host:      "~/.claude.json",
-		Container: "/home/sandbox/.claude.json",
+		Container: sandboxHomeDir + "/.claude.json",
 		Mode:      MountModeReadWrite,
 	},
 	{
 		Host:      "~/.config/claude-code/",
-		Container: "/home/sandbox/.config/claude-code/",
+		Container: sandboxHomeDir + "/.config/claude-code/",
 		Mode:      MountModeReadWrite,
 	},
 	{
 		Host:      "~/.codex/",
-		Container: "/home/sandbox/.codex/",
+		Container: sandboxHomeDir + "/.codex/",
 		Mode:      MountModeReadWrite,
 	},
 	{
 		Host:      "~/.pi/",
-		Container: "/home/sandbox/.pi/",
+		Container: sandboxHomeDir + "/.pi/",
 		Mode:      MountModeReadWrite,
 	},
 	{
 		Host:      "~/.gitconfig",
-		Container: "/home/sandbox/.gitconfig",
+		Container: sandboxHomeDir + "/.gitconfig",
 		Mode:      MountModeReadOnly,
 	},
 	{
 		Host:      "~/.config/sb/zshrc",
-		Container: "/home/sandbox/.zshrc",
+		Container: sandboxHomeDir + "/.zshrc",
 		Mode:      MountModeReadOnly,
 	},
 	{
 		Host:      "~/.config/sb/starship.toml",
-		Container: "/home/sandbox/.config/starship.toml",
+		Container: sandboxHomeDir + "/.config/starship.toml",
 		Mode:      MountModeReadOnly,
 	},
 	{
 		Host:      "~/.config/sb/nvim/",
-		Container: "/home/sandbox/.config/nvim/",
+		Container: sandboxHomeDir + "/.config/nvim/",
 		Mode:      MountModeReadWrite,
 	},
 }

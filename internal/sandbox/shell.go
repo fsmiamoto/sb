@@ -14,10 +14,7 @@ import (
 	"github.com/fsmiamoto/sb/assets"
 )
 
-const (
-	sandboxHomeDir = "/home/sandbox"
-	sandboxUser    = "sandbox"
-)
+const sandboxUser = "sandbox"
 
 type interactiveCommandRunner func(context.Context, string, []string, io.Reader, io.Writer, io.Writer) (int, error)
 

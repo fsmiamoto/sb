@@ -11,7 +11,7 @@ import (
 	"github.com/fsmiamoto/sb/internal/pathutil"
 )
 
-const workspaceMountTarget = "/home/sandbox/workspace"
+const workspaceMountTarget = sandboxHomeDir + "/workspace"
 
 // MountBuilder assembles the bind mounts used by sandbox containers.
 //
@@ -141,7 +141,7 @@ func mapContainerPath(hostPath string) string {
 		return hostPath
 	}
 
-	return "/home/sandbox/" + filepath.ToSlash(relPath)
+	return sandboxHomeDir + "/" + filepath.ToSlash(relPath)
 }
 
 func pathExists(path string) bool {
