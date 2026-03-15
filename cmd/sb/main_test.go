@@ -394,3 +394,91 @@ func TestPrintSandboxJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestPrintSandboxTable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		sandboxes  []sandbox.SandboxInfo
+		wantParts  []string
+		wantAbsent []string
+	}{
+		{
+			name: "single running sandbox",
+			sandboxes: []sandbox.SandboxInfo{
+				{
+					Name:      "sb-myapp-abc12345",
+					Workspace: "/home/user/myapp",
+					Status:    "running",
+					CreatedAt: "2026-03-08T10:30:00Z",
+				},
+			},
+			wantParts: []string{
+				"sb-myapp-abc12345",
+				"/home/user/myapp",
+				"running",
+				"2026-03-08 10:30",
+				"NAME",
+				"WORKSPACE",
+				"STATUS",
+				"CREATED",
+			},
+		},
+		{
+			name: "exited maps to stopped",
+			sandboxes: []sandbox.SandboxInfo{
+				{
+					Name:      "sb-proj-def67890",
+					Workspace: "/tmp/proj",
+					Status:    "exited",
+				},
+			},
+			wantParts:  []string{"sb-proj-def67890", "stopped"},
+			wantAbsent: []string{"exited"},
+		},
+		{
+			name: "multiple sandboxes",
+			sandboxes: []sandbox.SandboxInfo{
+				{Name: "sb-a-11111111", Workspace: "/a", Status: "running"},
+				{Name: "sb-b-22222222", Workspace: "/b", Status: "exited"},
+			},
+			wantParts: []string{
+				"sb-a-11111111", "/a", "running",
+				"sb-b-22222222", "/b", "stopped",
+			},
+		},
+		{
+			name: "unknown status for empty",
+			sandboxes: []sandbox.SandboxInfo{
+				{Name: "sb-x-aaaaaaaa", Workspace: "/x", Status: ""},
+			},
+			wantParts: []string{"sb-x-aaaaaaaa", "unknown"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var buf bytes.Buffer
+			printSandboxTable(&buf, tc.sandboxes)
+			got := buf.String()
+
+			if got == "" {
+				t.Fatal("printSandboxTable() produced no output")
+			}
+
+			for _, part := range tc.wantParts {
+				if !strings.Contains(got, part) {
+					t.Errorf("output missing %q\ngot: %s", part, got)
+				}
+			}
+			for _, absent := range tc.wantAbsent {
+				if strings.Contains(got, absent) {
+					t.Errorf("output should not contain %q\ngot: %s", absent, got)
+				}
+			}
+		})
+	}
+}

@@ -382,7 +382,7 @@ func listCommand() *cli.Command {
 				return nil
 			}
 
-			printSandboxTable(sandboxes)
+			printSandboxTable(os.Stdout, sandboxes)
 			return nil
 		},
 	}
@@ -425,8 +425,8 @@ func statusText(raw string) (string, lipgloss.Style) {
 	}
 }
 
-// printSandboxTable outputs a lipgloss-styled table of sandboxes.
-func printSandboxTable(sandboxes []sandbox.SandboxInfo) {
+// printSandboxTable outputs a lipgloss-styled table of sandboxes to w.
+func printSandboxTable(w io.Writer, sandboxes []sandbox.SandboxInfo) {
 	// Build rows and collect per-row status styles.
 	statusStyles := make([]lipgloss.Style, 0, len(sandboxes))
 
@@ -459,7 +459,7 @@ func printSandboxTable(sandboxes []sandbox.SandboxInfo) {
 		return cellBase
 	})
 
-	_, _ = lipgloss.Println(t)
+	_, _ = fmt.Fprintln(w, t)
 }
 
 // sandboxJSON is the JSON representation of a sandbox for --json output.
