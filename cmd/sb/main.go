@@ -275,6 +275,7 @@ func attachCommand() *cli.Command {
 func stopCommand() *cli.Command {
 	return &cli.Command{
 		Name:         "stop",
+		Aliases:      []string{"s"},
 		Usage:        "Stop a running sandbox",
 		ArgsUsage:    "[name]",
 		BashComplete: completeSandboxNames,
@@ -350,8 +351,9 @@ func destroyCommand() *cli.Command {
 
 func listCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "list",
-		Usage: "List all sandboxes with status",
+		Name:    "list",
+		Aliases: []string{"ls"},
+		Usage:   "List all sandboxes with status",
 		Action: func(cCtx *cli.Context) error {
 			merged := loadMergedConfig(cCtx)
 			mgr := newManager(merged)
