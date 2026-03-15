@@ -105,7 +105,6 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 	ctx := context.Background()
 	workspace := "/tmp/project"
 	createdID := "new-container-id"
-	createdAt := "2026-03-08T10:00:00Z"
 	mounts := []mount.Mount{{Type: mount.TypeBind, Source: workspace, Target: workspaceMountTarget, ReadOnly: false}}
 
 	var ensuredBundledImage string
@@ -120,14 +119,9 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 		envPassthrough: []string{"TOKEN", "EMPTY"},
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
-					if containerID == "sb-project-f630ad93" {
-						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
-					}
-					if containerID != createdID {
-						t.Fatalf("ContainerInspect() id = %q, want %q or sandbox lookup", containerID, createdID)
-					}
-					return managedInspect(createdID, "sb-project-f630ad93", workspace, createdAt, "created"), nil
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					// getSandbox lookup — not found
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
 				},
 				createFunc: func(ctx context.Context, config *containertypes.Config, hostConfig *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, containerName string) (containertypes.CreateResponse, error) {
 					createdConfig = config
@@ -237,11 +231,11 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 	if got, want := sandbox.Workspace, workspace; got != want {
 		t.Fatalf("Create() sandbox workspace = %q, want %q", got, want)
 	}
-	if got, want := sandbox.CreatedAt, createdAt; got != want {
-		t.Fatalf("Create() sandbox created_at = %q, want %q", got, want)
-	}
 	if sandbox.ContainerID != createdID {
 		t.Fatalf("Create() sandbox container ID = %q, want %q", sandbox.ContainerID, createdID)
+	}
+	if sandbox.Status != "created" {
+		t.Fatalf("Create() sandbox status = %q, want %q", sandbox.Status, "created")
 	}
 }
 
@@ -255,13 +249,10 @@ func TestSandboxManagerCreateUsesCustomImageWhenCLIImageProvided(t *testing.T) {
 	manager := &SandboxManager{
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
-					if containerID == "sb-project-f630ad93" {
-						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
-					}
-					return managedInspect("new-id", "sb-project-f630ad93", workspace, "2026-03-08T10:00:00Z", "created"), nil
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
 				},
-				createFunc: func(ctx context.Context, config *containertypes.Config, hostConfig *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, containerName string) (containertypes.CreateResponse, error) {
+				createFunc: func(_ context.Context, config *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, _ string) (containertypes.CreateResponse, error) {
 					if got, want := config.Image, customImage; got != want {
 						t.Fatalf("ContainerCreate() image = %q, want %q", got, want)
 					}
@@ -274,7 +265,7 @@ func TestSandboxManagerCreateUsesCustomImageWhenCLIImageProvided(t *testing.T) {
 				bundledCalled = true
 				return nil
 			},
-			ensureCustomImageFunc: func(ctx context.Context, imageName string) error {
+			ensureCustomImageFunc: func(_ context.Context, imageName string) error {
 				customEnsured = imageName
 				return nil
 			},
@@ -305,13 +296,10 @@ func TestSandboxManagerCreatePullsConfigLevelCustomImage(t *testing.T) {
 		imageName: configImage, // set via config file, not CLI
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(ctx context.Context, containerID string) (containertypes.InspectResponse, error) {
-					if containerID == "sb-project-f630ad93" {
-						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
-					}
-					return managedInspect("new-id", "sb-project-f630ad93", workspace, "2026-03-08T10:00:00Z", "created"), nil
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
 				},
-				createFunc: func(ctx context.Context, config *containertypes.Config, hostConfig *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, containerName string) (containertypes.CreateResponse, error) {
+				createFunc: func(_ context.Context, config *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, _ string) (containertypes.CreateResponse, error) {
 					if got, want := config.Image, configImage; got != want {
 						t.Fatalf("ContainerCreate() image = %q, want %q", got, want)
 					}
@@ -324,7 +312,7 @@ func TestSandboxManagerCreatePullsConfigLevelCustomImage(t *testing.T) {
 				bundledCalled = true
 				return nil
 			},
-			ensureCustomImageFunc: func(ctx context.Context, imageName string) error {
+			ensureCustomImageFunc: func(_ context.Context, imageName string) error {
 				customEnsured = imageName
 				return nil
 			},
@@ -446,11 +434,8 @@ func TestCreateForceRecreatesExisting(t *testing.T) {
 						// destroyContainer inspects it — return stopped
 						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "exited"), nil
 					}
-					if id == "sb-project-f630ad93" {
-						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "exited"), nil
-					}
-					// post-create inspect
-					return managedInspect("new-id", "sb-project-f630ad93", "/tmp/project", "2026-03-15T00:00:00Z", "created"), nil
+					// getSandbox — existing sandbox
+					return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "exited"), nil
 				},
 				removeFunc: func(_ context.Context, id string, _ containertypes.RemoveOptions) error {
 					removedID = id
@@ -536,11 +521,8 @@ func TestCreateSensitiveDirConfirmProceeds(t *testing.T) {
 		customSensitiveDirs: []string{"/tmp/project"},
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					if id == "sb-project-f630ad93" {
-						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
-					}
-					return managedInspect("new-id", "sb-project-f630ad93", "/tmp/project", "2026-03-15T00:00:00Z", "created"), nil
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
 				},
 				createFunc: func(_ context.Context, _ *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, _ string) (containertypes.CreateResponse, error) {
 					return containertypes.CreateResponse{ID: "new-id"}, nil
@@ -677,47 +659,14 @@ func TestCreateContainerCreateError(t *testing.T) {
 	}
 }
 
-func TestCreatePostCreateInspectError(t *testing.T) {
-	t.Parallel()
-	inspectCount := 0
-	manager := &SandboxManager{
-		getClient: func(context.Context) (dockerSandboxClient, error) {
-			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					inspectCount++
-					if inspectCount == 1 {
-						// getSandbox lookup — not found
-						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
-					}
-					// post-create inspect fails
-					return containertypes.InspectResponse{}, errors.New("inspect failed")
-				},
-				createFunc: func(_ context.Context, _ *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, _ string) (containertypes.CreateResponse, error) {
-					return containertypes.CreateResponse{ID: "new-id"}, nil
-				},
-			}, nil
-		},
-		imageManager:       &fakeManagerImageManager{},
-		mountBuilder:       &fakeManagerMountBuilder{},
-		ensureShellConfigs: func() error { return nil },
-	}
-	_, err := manager.Create(context.Background(), CreateOptions{Workspace: "/tmp/project"})
-	if err == nil || !strings.Contains(err.Error(), "inspect newly created") {
-		t.Fatalf("Create() error = %v, want inspect error", err)
-	}
-}
-
 func TestCreateWithCustomName(t *testing.T) {
 	t.Parallel()
 	var createdName string
 	manager := &SandboxManager{
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
-				inspectFunc: func(_ context.Context, id string) (containertypes.InspectResponse, error) {
-					if id == "my-sandbox" {
-						return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
-					}
-					return managedInspect("new-id", "my-sandbox", "/tmp/project", "2026-03-15T00:00:00Z", "created"), nil
+				inspectFunc: func(_ context.Context, _ string) (containertypes.InspectResponse, error) {
+					return containertypes.InspectResponse{}, cerrdefs.ErrNotFound
 				},
 				createFunc: func(_ context.Context, _ *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, name string) (containertypes.CreateResponse, error) {
 					createdName = name
@@ -746,7 +695,7 @@ func TestCreateWithCustomName(t *testing.T) {
 
 func TestCreateExistingConfirmProceeds(t *testing.T) {
 	t.Parallel()
-	var destroyed, created bool
+	var destroyed bool
 	manager := &SandboxManager{
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
@@ -755,19 +704,14 @@ func TestCreateExistingConfirmProceeds(t *testing.T) {
 						// destroyContainer inspect — return stopped so no stop needed
 						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "exited"), nil
 					}
-					if !created {
-						// getSandbox — existing sandbox
-						return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "running"), nil
-					}
-					// post-create inspect
-					return managedInspect("new-id", "sb-project-f630ad93", "/tmp/project", "2026-03-15T00:00:00Z", "created"), nil
+					// getSandbox — existing sandbox
+					return managedInspect("old-id", "sb-project-f630ad93", "/tmp/project", "2026-01-01T00:00:00Z", "running"), nil
 				},
 				removeFunc: func(_ context.Context, _ string, _ containertypes.RemoveOptions) error {
 					destroyed = true
 					return nil
 				},
 				createFunc: func(_ context.Context, _ *containertypes.Config, _ *containertypes.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, _ string) (containertypes.CreateResponse, error) {
-					created = true
 					return containertypes.CreateResponse{ID: "new-id"}, nil
 				},
 			}, nil

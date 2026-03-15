@@ -244,12 +244,12 @@ func (m *SandboxManager) Create(ctx context.Context, opts CreateOptions) (Sandbo
 		return SandboxInfo{}, fmt.Errorf("create sandbox container %q: %w", sandboxName, err)
 	}
 
-	inspect, err := cli.ContainerInspect(ctx, response.ID)
-	if err != nil {
-		return SandboxInfo{}, fmt.Errorf("inspect newly created sandbox %q: %w", sandboxName, err)
-	}
-
-	return sandboxInfoFromInspect(inspect), nil
+	return SandboxInfo{
+		Name:        sandboxName,
+		Workspace:   workspace,
+		ContainerID: response.ID,
+		Status:      "created",
+	}, nil
 }
 
 // Attach resolves a sandbox by name or workspace and starts it if it is not running.
