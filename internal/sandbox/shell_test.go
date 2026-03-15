@@ -408,6 +408,88 @@ func (f *failReadFS) Open(name string) (fs.File, error) {
 	return fstest.MapFS{}.Open(name)
 }
 
+func TestRunInteractiveCommandSuccess(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	exitCode, err := runInteractiveCommand(context.Background(), "echo", []string{"hello"}, nil, &stdout, io.Discard)
+	if err != nil {
+		t.Fatalf("runInteractiveCommand() error = %v", err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("runInteractiveCommand() exit code = %d, want 0", exitCode)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "hello" {
+		t.Fatalf("runInteractiveCommand() stdout = %q, want %q", got, "hello")
+	}
+}
+
+func TestRunInteractiveCommandNonZeroExitCode(t *testing.T) {
+	t.Parallel()
+
+	exitCode, err := runInteractiveCommand(context.Background(), "sh", []string{"-c", "exit 42"}, nil, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatalf("runInteractiveCommand() error = %v, want nil (exit code in return value)", err)
+	}
+	if exitCode != 42 {
+		t.Fatalf("runInteractiveCommand() exit code = %d, want 42", exitCode)
+	}
+}
+
+func TestRunInteractiveCommandNotFound(t *testing.T) {
+	t.Parallel()
+
+	_, err := runInteractiveCommand(context.Background(), "/nonexistent/binary", nil, nil, io.Discard, io.Discard)
+	if err == nil {
+		t.Fatal("runInteractiveCommand() error = nil, want command-not-found error")
+	}
+}
+
+func TestRunInteractiveCommandNilContext(t *testing.T) {
+	t.Parallel()
+
+	exitCode, err := runInteractiveCommand(nil, "true", nil, nil, io.Discard, io.Discard) //nolint:staticcheck // testing nil ctx fallback
+	if err != nil {
+		t.Fatalf("runInteractiveCommand() error = %v", err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("runInteractiveCommand() exit code = %d, want 0", exitCode)
+	}
+}
+
+func TestRunInteractiveCommandStdinPassthrough(t *testing.T) {
+	t.Parallel()
+
+	stdin := strings.NewReader("hello from stdin")
+	var stdout bytes.Buffer
+	exitCode, err := runInteractiveCommand(context.Background(), "cat", nil, stdin, &stdout, io.Discard)
+	if err != nil {
+		t.Fatalf("runInteractiveCommand() error = %v", err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("runInteractiveCommand() exit code = %d, want 0", exitCode)
+	}
+	if got := stdout.String(); got != "hello from stdin" {
+		t.Fatalf("runInteractiveCommand() stdout = %q, want %q", got, "hello from stdin")
+	}
+}
+
+func TestRunInteractiveCommandStderrCapture(t *testing.T) {
+	t.Parallel()
+
+	var stderr bytes.Buffer
+	exitCode, err := runInteractiveCommand(context.Background(), "sh", []string{"-c", "echo err >&2"}, nil, io.Discard, &stderr)
+	if err != nil {
+		t.Fatalf("runInteractiveCommand() error = %v", err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("runInteractiveCommand() exit code = %d, want 0", exitCode)
+	}
+	if got := strings.TrimSpace(stderr.String()); got != "err" {
+		t.Fatalf("runInteractiveCommand() stderr = %q, want %q", got, "err")
+	}
+}
+
 func assertFileContent(t *testing.T, path string, want string) {
 	t.Helper()
 
