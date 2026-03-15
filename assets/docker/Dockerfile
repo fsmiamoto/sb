@@ -74,9 +74,6 @@ RUN HOME=/home/sandbox bash -c 'curl -fsSL https://claude.ai/install.sh | bash'
 RUN npm install -g @openai/codex @mariozechner/pi-coding-agent agent-browser playwright && \
     npm cache clean --force
 
-# Set up zsh as default shell
-RUN chsh -s /bin/zsh
-
 # Create user home directory structure with workspace
 RUN mkdir -p /home/sandbox/.config /home/sandbox/.local/share /home/sandbox/.cache /home/sandbox/workspace
 
@@ -95,9 +92,8 @@ RUN mkdir -p /opt/playwright-browsers && \
 
 WORKDIR /home/sandbox/workspace
 
-# Copy and set up entrypoint for dynamic user creation
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Copy entrypoint for dynamic user creation (--chmod requires BuildKit, default since Docker 23.0)
+COPY --chmod=755 entrypoint.sh /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/bin/zsh"]
