@@ -420,10 +420,7 @@ func statusText(raw string) (string, lipgloss.Style) {
 // printSandboxTable outputs a lipgloss-styled table of sandboxes.
 func printSandboxTable(ctx context.Context, mgr *sandbox.SandboxManager, sandboxes []sandbox.SandboxInfo) {
 	// Build rows and collect per-row status styles.
-	type rowMeta struct {
-		statusStyle lipgloss.Style
-	}
-	metas := make([]rowMeta, 0, len(sandboxes))
+	statusStyles := make([]lipgloss.Style, 0, len(sandboxes))
 
 	t := table.New().
 		Headers("NAME", "WORKSPACE", "STATUS", "CREATED").
@@ -436,7 +433,7 @@ func printSandboxTable(ctx context.Context, mgr *sandbox.SandboxManager, sandbox
 			raw = "unknown"
 		}
 		display, sty := statusText(raw)
-		metas = append(metas, rowMeta{statusStyle: sty})
+		statusStyles = append(statusStyles, sty)
 		t.Row(sb.Name, sb.Workspace, display, formatCreatedAt(sb.CreatedAt))
 	}
 
@@ -451,8 +448,8 @@ func printSandboxTable(ctx context.Context, mgr *sandbox.SandboxManager, sandbox
 		case colWorkspace:
 			return base
 		case colStatus:
-			if row >= 0 && row < len(metas) {
-				return base.Inherit(metas[row].statusStyle)
+			if row >= 0 && row < len(statusStyles) {
+				return base.Inherit(statusStyles[row])
 			}
 			return base
 		case colCreated:

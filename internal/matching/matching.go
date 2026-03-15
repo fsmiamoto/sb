@@ -1,6 +1,7 @@
 package matching
 
 import (
+	"cmp"
 	"regexp"
 	"slices"
 	"strings"
@@ -94,7 +95,7 @@ func FindMatchingSandboxes[T NamedSandbox](query string, sandboxes []T) []T {
 	}
 
 	slices.SortStableFunc(scored, func(a, b scoredSandbox[T]) int {
-		return a.score - b.score
+		return cmp.Compare(a.score, b.score)
 	})
 
 	if scored[0].score == 0 {
