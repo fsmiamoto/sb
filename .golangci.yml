@@ -28,19 +28,26 @@ linters:
     - exptostd
     - fatcontext
     - forcetypeassert
+    - funcorder
     - gochecknoinits
     - gocheckcompilerdirectives
     - gochecksumtype
     - gocritic
     - godoclint
+    - godot
+    - godox
     - gomoddirectives
     - goprintffuncname
     - gosmopolitan
+    - grouper
     - govet
     - iface
+    - importas
     - ineffassign
+    - interfacebloat
     - intrange
     - iotamixing
+    - maintidx
     - makezero
     - mirror
     - misspell

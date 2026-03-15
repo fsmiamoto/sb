@@ -74,7 +74,7 @@ type contextEndpoint struct {
 // readContextEndpoint reads the Docker endpoint host from a context's meta.json.
 //
 // The meta.json path is derived by hashing the context name with SHA-256:
-// ~/.docker/contexts/meta/<hex(sha256(name))>/meta.json
+// ~/.docker/contexts/meta/<hex(sha256(name))>/meta.json.
 func readContextEndpoint(home, contextName string) string {
 	hash := sha256.Sum256([]byte(contextName))
 	hexHash := hex.EncodeToString(hash[:])
