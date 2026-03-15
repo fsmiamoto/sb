@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -147,7 +148,7 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 				if gotWorkspace != workspace {
 					t.Fatalf("Build() workspace = %q, want %q", gotWorkspace, workspace)
 				}
-				if !reflect.DeepEqual(extraCLIMounts, []string{"~/extra", "~/missing"}) {
+				if !slices.Equal(extraCLIMounts, []string{"~/extra", "~/missing"}) {
 					t.Fatalf("Build() extraCLIMounts = %#v, want %#v", extraCLIMounts, []string{"~/extra", "~/missing"})
 				}
 				return mounts, []string{"~/missing"}, nil
@@ -212,7 +213,7 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 		"HOST_UID=1000",
 		"TOKEN=override",
 	}
-	if !reflect.DeepEqual(createdConfig.Env, wantEnv) {
+	if !slices.Equal(createdConfig.Env, wantEnv) {
 		t.Fatalf("ContainerCreate() env = %#v, want %#v", createdConfig.Env, wantEnv)
 	}
 	wantLabels := map[string]string{
@@ -220,14 +221,14 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 		nameLabelKey:      "sb-project-f630ad93",
 		workspaceLabelKey: workspace,
 	}
-	if !reflect.DeepEqual(createdConfig.Labels, wantLabels) {
+	if !maps.Equal(createdConfig.Labels, wantLabels) {
 		t.Fatalf("ContainerCreate() labels = %#v, want %#v", createdConfig.Labels, wantLabels)
 	}
 	if !reflect.DeepEqual(createdHostConfig.Mounts, mounts) {
 		t.Fatalf("ContainerCreate() mounts = %#v, want %#v", createdHostConfig.Mounts, mounts)
 	}
 	wantWarns := []string{"Mount path does not exist, skipping: ~/missing"}
-	if !reflect.DeepEqual(warns, wantWarns) {
+	if !slices.Equal(warns, wantWarns) {
 		t.Fatalf("warns = %#v, want %#v", warns, wantWarns)
 	}
 	if got, want := sandbox.Name, "sb-project-f630ad93"; got != want {
@@ -819,7 +820,7 @@ func TestSandboxManagerAttachStartsStoppedSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Attach() error = %v", err)
 	}
-	if !reflect.DeepEqual(startedIDs, []string{"container-id"}) {
+	if !slices.Equal(startedIDs, []string{"container-id"}) {
 		t.Fatalf("Attach() started IDs = %#v, want %#v", startedIDs, []string{"container-id"})
 	}
 	if got, want := sandbox.Name, "sb-project-f630ad93"; got != want {
@@ -978,7 +979,7 @@ func TestAttachResolvesFromWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Attach() error = %v", err)
 	}
-	if !reflect.DeepEqual(startedIDs, []string{"cid-1"}) {
+	if !slices.Equal(startedIDs, []string{"cid-1"}) {
 		t.Fatalf("Attach() started IDs = %v, want %v", startedIDs, []string{"cid-1"})
 	}
 	if sb.Workspace != "/tmp/project" {
@@ -1136,7 +1137,7 @@ func TestStopResolvesByName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stop() error = %v", err)
 	}
-	if !reflect.DeepEqual(stoppedIDs, []string{"cid-1"}) {
+	if !slices.Equal(stoppedIDs, []string{"cid-1"}) {
 		t.Fatalf("Stop() stopped IDs = %v, want %v", stoppedIDs, []string{"cid-1"})
 	}
 	if sb.Name != "sb-proj-abc12345" {
@@ -1171,7 +1172,7 @@ func TestSandboxManagerStopStopsRunningSandboxResolvedFromWorkspace(t *testing.T
 	if err != nil {
 		t.Fatalf("Stop() error = %v", err)
 	}
-	if !reflect.DeepEqual(stoppedIDs, []string{"running-id"}) {
+	if !slices.Equal(stoppedIDs, []string{"running-id"}) {
 		t.Fatalf("Stop() stopped IDs = %#v, want %#v", stoppedIDs, []string{"running-id"})
 	}
 	if got, want := sandbox.Workspace, "/tmp/project"; got != want {
@@ -1219,13 +1220,13 @@ func TestSandboxManagerDestroyStopsAndRemovesContainerWhenConfirmed(t *testing.T
 		t.Fatalf("Destroy() error = %v", err)
 	}
 	wantMessages := []string{"Are you sure you want to destroy sandbox 'sb-project-f630ad93'?\nThis will stop and remove the container."}
-	if !reflect.DeepEqual(confirmedMessages, wantMessages) {
+	if !slices.Equal(confirmedMessages, wantMessages) {
 		t.Fatalf("Destroy() confirmation messages = %#v, want %#v", confirmedMessages, wantMessages)
 	}
-	if !reflect.DeepEqual(stoppedIDs, []string{"running-id"}) {
+	if !slices.Equal(stoppedIDs, []string{"running-id"}) {
 		t.Fatalf("Destroy() stopped IDs = %#v, want %#v", stoppedIDs, []string{"running-id"})
 	}
-	if !reflect.DeepEqual(removedIDs, []string{"running-id"}) {
+	if !slices.Equal(removedIDs, []string{"running-id"}) {
 		t.Fatalf("Destroy() removed IDs = %#v, want %#v", removedIDs, []string{"running-id"})
 	}
 	if got, want := sandbox.Name, "sb-project-f630ad93"; got != want {
@@ -1685,7 +1686,7 @@ func TestSandboxManagerBuildEnvironment(t *testing.T) {
 			}
 
 			got := manager.buildEnvironment(tc.extraEnvVars)
-			if !reflect.DeepEqual(got, tc.want) {
+			if !slices.Equal(got, tc.want) {
 				t.Fatalf("buildEnvironment() = %#v, want %#v", got, tc.want)
 			}
 		})
@@ -1913,7 +1914,7 @@ func TestInspectLabels(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := inspectLabels(tc.inspect)
-			if !reflect.DeepEqual(got, tc.want) {
+			if !maps.Equal(got, tc.want) {
 				t.Fatalf("inspectLabels() = %#v, want %#v", got, tc.want)
 			}
 		})

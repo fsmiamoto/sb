@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -127,7 +127,7 @@ func TestSandboxManagerExecShellRunsDockerExecWithSetpriv(t *testing.T) {
 		"--init-groups",
 		"/bin/zsh",
 	}
-	if !reflect.DeepEqual(gotArgs, wantArgs) {
+	if !slices.Equal(gotArgs, wantArgs) {
 		t.Fatalf("ExecShell() args = %#v, want %#v", gotArgs, wantArgs)
 	}
 	if gotStdin != stdinBuffer || gotStdout != stdoutBuffer || gotStderr != stderrBuffer {

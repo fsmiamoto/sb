@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -100,7 +99,7 @@ func TestImageManagerEnsureImageBuildsEmbeddedContextWhenMissing(t *testing.T) {
 					if options.Dockerfile != "Dockerfile" {
 						t.Fatalf("ImageBuild Dockerfile = %q, want %q", options.Dockerfile, "Dockerfile")
 					}
-					if !reflect.DeepEqual(options.Tags, []string{"sb-sandbox:test"}) {
+					if !slices.Equal(options.Tags, []string{"sb-sandbox:test"}) {
 						t.Fatalf("ImageBuild Tags = %#v, want %#v", options.Tags, []string{"sb-sandbox:test"})
 					}
 					if !options.Remove {

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -27,7 +28,7 @@ func TestExpandPaths(t *testing.T) {
 	t.Run("expands tilde", func(t *testing.T) {
 		result := expandPaths([]string{"~/foo", "~/bar"})
 		want := []string{filepath.Join(home, "foo"), filepath.Join(home, "bar")}
-		if !reflect.DeepEqual(result, want) {
+		if !slices.Equal(result, want) {
 			t.Fatalf("expandPaths returned %v, want %v", result, want)
 		}
 	})
@@ -35,7 +36,7 @@ func TestExpandPaths(t *testing.T) {
 	t.Run("preserves absolute", func(t *testing.T) {
 		result := expandPaths([]string{"/tmp/foo"})
 		want := []string{"/tmp/foo"}
-		if !reflect.DeepEqual(result, want) {
+		if !slices.Equal(result, want) {
 			t.Fatalf("expandPaths returned %v, want %v", result, want)
 		}
 	})

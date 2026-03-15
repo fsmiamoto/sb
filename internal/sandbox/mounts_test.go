@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 
 	dockermount "github.com/docker/docker/api/types/mount"
@@ -95,7 +96,7 @@ func TestMountBuilderBuildIncludesWorkspaceDefaultsAndExtraMounts(t *testing.T) 
 	}
 
 	wantMissing := []string{"~/missing-config", "~/missing-cli"}
-	if !reflect.DeepEqual(missing, wantMissing) {
+	if !slices.Equal(missing, wantMissing) {
 		t.Fatalf("Build() missing = %#v, want %#v", missing, wantMissing)
 	}
 }
