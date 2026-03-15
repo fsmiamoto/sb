@@ -23,8 +23,12 @@ test-race:
 lint:
     if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run ./...; else echo "golangci-lint not found; falling back to go vet ./..." >&2; go vet ./...; fi
 
-# Run all checks (vet + lint + test)
-check: lint test
+# Check for known vulnerabilities in dependencies
+vulncheck:
+    go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+# Run all checks (lint + vulncheck + test)
+check: lint vulncheck test
 
 # Build the Docker sandbox image
 docker-build:
