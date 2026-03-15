@@ -15,6 +15,7 @@ import (
 
 	cerrdefs "github.com/containerd/errdefs"
 	buildtypes "github.com/docker/docker/api/types/build"
+	dockerclient "github.com/docker/docker/client"
 	dockerimage "github.com/docker/docker/api/types/image"
 )
 
@@ -637,4 +638,116 @@ func contains(values []string, want string) bool {
 
 func jsonStream(lines ...string) io.ReadCloser {
 	return io.NopCloser(strings.NewReader(strings.Join(lines, "\n") + "\n"))
+}
+
+func TestConsumeDockerStreamNilBody(t *testing.T) {
+	t.Parallel()
+
+	if err := consumeDockerStream(nil); err != nil {
+		t.Fatalf("consumeDockerStream(nil) error = %v, want nil", err)
+	}
+}
+
+func TestConsumeDockerStreamEOFOnly(t *testing.T) {
+	t.Parallel()
+
+	// An empty reader produces an immediate EOF from the JSON decoder.
+	body := io.NopCloser(strings.NewReader(""))
+	if err := consumeDockerStream(body); err != nil {
+		t.Fatalf("consumeDockerStream(empty) error = %v, want nil (EOF treated as success)", err)
+	}
+}
+
+func TestConsumeDockerStreamValidStream(t *testing.T) {
+	t.Parallel()
+
+	body := jsonStream(
+		`{"stream":"Step 1/1 : FROM scratch"}`,
+		`{"stream":"Successfully built abc123"}`,
+	)
+	if err := consumeDockerStream(body); err != nil {
+		t.Fatalf("consumeDockerStream() error = %v, want nil", err)
+	}
+}
+
+func TestConsumeDockerStreamErrorInStream(t *testing.T) {
+	t.Parallel()
+
+	body := jsonStream(`{"errorDetail":{"message":"build failed"},"error":"build failed"}`)
+	err := consumeDockerStream(body)
+	if err == nil {
+		t.Fatal("consumeDockerStream() error = nil, want error from stream")
+	}
+}
+
+func TestImageManagerInitDefaultsNilProvider(t *testing.T) {
+	t.Parallel()
+
+	// A zero-valued ImageManager (no provider, no getClient) should get a
+	// fallback getClient that returns "not configured".
+	manager := &ImageManager{}
+	manager.initDefaults()
+
+	_, err := manager.getClient(context.Background())
+	if err == nil {
+		t.Fatal("getClient() error = nil, want 'not configured' error")
+	}
+	if !strings.Contains(err.Error(), "Docker client provider is not configured") {
+		t.Fatalf("getClient() error = %q, want 'not configured' message", err)
+	}
+}
+
+func TestImageManagerInitDefaultsWithProvider(t *testing.T) {
+	t.Parallel()
+
+	// When a provider is set but getClient is nil, initDefaults should wire
+	// up getClient to delegate to the provider.
+	provider := &DockerClientProvider{
+		newClient: func(opts ...dockerclient.Opt) (*dockerclient.Client, error) {
+			return &dockerclient.Client{}, nil
+		},
+		pingClient: func(ctx context.Context, cli *dockerclient.Client) error {
+			return nil
+		},
+		closeClient: func(cli *dockerclient.Client) error {
+			return nil
+		},
+		resolveHost: func() string { return "" },
+	}
+
+	manager := &ImageManager{provider: provider}
+	manager.initDefaults()
+
+	cli, err := manager.getClient(context.Background())
+	if err != nil {
+		t.Fatalf("getClient() error = %v", err)
+	}
+	if cli == nil {
+		t.Fatal("getClient() returned nil client")
+	}
+}
+
+func TestCreateBuildContextArchiveNonexistentRoot(t *testing.T) {
+	t.Parallel()
+
+	_, err := createBuildContextArchive(filepath.Join(t.TempDir(), "nonexistent"))
+	if err == nil {
+		t.Fatal("createBuildContextArchive() error = nil, want walk error")
+	}
+}
+
+func TestCreateBuildContextArchiveFileOpenError(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	// Create a file then make it unreadable to trigger os.Open error inside WalkDir.
+	unreadable := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(unreadable, []byte("data"), 0o000); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	_, err := createBuildContextArchive(root)
+	if err == nil {
+		t.Fatal("createBuildContextArchive() error = nil, want open error for unreadable file")
+	}
 }
