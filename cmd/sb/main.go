@@ -123,8 +123,7 @@ func formatCreatedAt(createdAt string) string {
 	// Docker timestamps have nanosecond precision (9 digits after decimal).
 	// Go's time.Parse only handles up to 9 digits, but the trailing Z needs
 	// to be handled. Truncate fractional seconds to 6 digits for consistency.
-	re := regexp.MustCompile(`\.(\d{6})\d+`)
-	timestamp := re.ReplaceAllString(createdAt, ".$1")
+	timestamp := nanosecondTruncateRe.ReplaceAllString(createdAt, ".$1")
 
 	for _, layout := range []string{
 		time.RFC3339Nano,
@@ -388,6 +387,10 @@ var (
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
 	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.White)
 	borderStyle = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+
+	// nanosecondTruncateRe truncates fractional seconds beyond 6 digits
+	// in Docker timestamps so Go's time.Parse can handle them.
+	nanosecondTruncateRe = regexp.MustCompile(`\.(\d{6})\d+`)
 )
 
 const (
