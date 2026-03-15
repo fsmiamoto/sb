@@ -50,12 +50,12 @@ func (m *ImageManager) EnsureImage(ctx context.Context, imageName string) error 
 		return err
 	}
 
-	err = inspectImage(ctx, cli, imageName)
-	switch {
-	case err == nil:
+	exists, err := imageExistsLocally(ctx, cli, imageName)
+	if err != nil {
+		return err
+	}
+	if exists {
 		return nil
-	case !cerrdefs.IsNotFound(err):
-		return fmt.Errorf("inspect Docker image %q: %w", imageName, err)
 	}
 
 	if _, err := fs.Stat(m.dockerContext, "Dockerfile"); err != nil {
@@ -97,12 +97,12 @@ func (m *ImageManager) EnsureCustomImage(ctx context.Context, imageName string) 
 		return err
 	}
 
-	err = inspectImage(ctx, cli, imageName)
-	switch {
-	case err == nil:
+	exists, err := imageExistsLocally(ctx, cli, imageName)
+	if err != nil {
+		return err
+	}
+	if exists {
 		return nil
-	case !cerrdefs.IsNotFound(err):
-		return fmt.Errorf("inspect Docker image %q: %w", imageName, err)
 	}
 
 	stream, err := cli.ImagePull(ctx, imageName, dockerimage.PullOptions{})
@@ -140,9 +140,18 @@ func (m *ImageManager) initDefaults() {
 	}
 }
 
-func inspectImage(ctx context.Context, cli dockerImageClient, imageName string) error {
+// imageExistsLocally checks whether the given image is available in the local
+// Docker store. Returns true when found, false when not found, or an error for
+// other failures (e.g. daemon unreachable).
+func imageExistsLocally(ctx context.Context, cli dockerImageClient, imageName string) (bool, error) {
 	_, _, err := cli.ImageInspectWithRaw(ctx, imageName)
-	return err
+	if err == nil {
+		return true, nil
+	}
+	if cerrdefs.IsNotFound(err) {
+		return false, nil
+	}
+	return false, fmt.Errorf("inspect Docker image %q: %w", imageName, err)
 }
 
 func normalizeImageName(imageName string) string {

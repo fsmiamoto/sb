@@ -45,6 +45,59 @@ func (c *fakeImageClient) ImagePull(ctx context.Context, imageName string, optio
 	return c.pullFunc(ctx, imageName, options)
 }
 
+func TestImageExistsLocally(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		err       error
+		want      bool
+		wantErr   bool
+		errSubstr string
+	}{
+		{
+			name: "found",
+			err:  nil,
+			want: true,
+		},
+		{
+			name: "not found",
+			err:  cerrdefs.ErrNotFound,
+			want: false,
+		},
+		{
+			name:      "other error",
+			err:       errors.New("daemon unreachable"),
+			want:      false,
+			wantErr:   true,
+			errSubstr: `inspect Docker image "test:latest"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cli := &fakeImageClient{
+				inspectFunc: func(_ context.Context, _ string) (dockerimage.InspectResponse, []byte, error) {
+					return dockerimage.InspectResponse{}, nil, tt.err
+				},
+			}
+
+			got, err := imageExistsLocally(context.Background(), cli, "test:latest")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("imageExistsLocally() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Fatalf("imageExistsLocally() = %v, want %v", got, tt.want)
+			}
+			if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
+				t.Fatalf("imageExistsLocally() error = %q, want substring %q", err, tt.errSubstr)
+			}
+		})
+	}
+}
+
 func TestImageManagerEnsureImageReturnsWithoutBuildingWhenImageExists(t *testing.T) {
 	t.Parallel()
 
