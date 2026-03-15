@@ -207,7 +207,7 @@ func (m *SandboxManager) Create(ctx context.Context, opts CreateOptions) (Sandbo
 	}
 	if opts.Warn != nil {
 		for _, path := range missingMounts {
-			opts.Warn(fmt.Sprintf("Mount path does not exist, skipping: %s", path))
+			opts.Warn("Mount path does not exist, skipping: " + path)
 		}
 	}
 

@@ -10,16 +10,21 @@ linters:
   default: none
   enable:
     - bodyclose
+    - copyloopvar
     - errcheck
     - errorlint
     - gocritic
     - govet
     - ineffassign
+    - intrange
     - misspell
     - nilerr
+    - perfsprint
     - staticcheck
     - unconvert
     - unused
+    - usestdlibvars
+    - usetesting
 
 formatters:
   enable:

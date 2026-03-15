@@ -250,7 +250,7 @@ func TestExitErrorFormatsWithPercent(t *testing.T) {
 	t.Parallel()
 
 	// Verify that %v formatting works correctly.
-	inner := fmt.Errorf("inner failure")
+	inner := errors.New("inner failure")
 	err := exitError("%v", inner)
 	if !strings.Contains(err.Error(), "inner failure") {
 		t.Fatalf("exitError(%%v, err) = %q, want to contain 'inner failure'", err.Error())
