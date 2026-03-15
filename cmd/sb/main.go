@@ -232,7 +232,9 @@ func createCommand() *cli.Command {
 				if err != nil {
 					return exitError("%v", err)
 				}
-				os.Exit(exitCode)
+				if exitCode != 0 {
+					return cli.Exit("", exitCode)
+				}
 			}
 
 			return nil
@@ -268,7 +270,9 @@ func attachCommand() *cli.Command {
 			if err != nil {
 				return exitError("%v", err)
 			}
-			os.Exit(exitCode)
+			if exitCode != 0 {
+				return cli.Exit("", exitCode)
+			}
 			return nil
 		},
 	}
