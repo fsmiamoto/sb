@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -103,7 +104,7 @@ func LoadConfig(path string) (Config, error) {
 		config.Defaults.ExtraMounts = expandPaths(mounts)
 	}
 	if envPassthrough, ok := stringSlice(raw.Defaults["env_passthrough"]); ok {
-		config.Defaults.EnvPassthrough = copyStrings(envPassthrough)
+		config.Defaults.EnvPassthrough = slices.Clone(envPassthrough)
 	}
 	if sensitiveDirs, ok := stringSlice(raw.Defaults["sensitive_dirs"]); ok {
 		config.Defaults.SensitiveDirs = expandPaths(sensitiveDirs)
@@ -119,9 +120,9 @@ func LoadConfig(path string) (Config, error) {
 // vars extend the file configuration, while CLI image overrides the file value.
 func MergeConfig(fileConfig Config, cliArgs CLIArgs) MergedConfig {
 	merged := MergedConfig{
-		ExtraMounts:    copyStrings(fileConfig.Defaults.ExtraMounts),
-		EnvPassthrough: copyStrings(fileConfig.Defaults.EnvPassthrough),
-		SensitiveDirs:  copyStrings(fileConfig.Defaults.SensitiveDirs),
+		ExtraMounts:    slices.Clone(fileConfig.Defaults.ExtraMounts),
+		EnvPassthrough: slices.Clone(fileConfig.Defaults.EnvPassthrough),
+		SensitiveDirs:  slices.Clone(fileConfig.Defaults.SensitiveDirs),
 		Image:          fileConfig.Docker.Image,
 	}
 
@@ -170,7 +171,7 @@ func expandHome(path string) string {
 func stringSlice(value any) ([]string, bool) {
 	switch typed := value.(type) {
 	case []string:
-		return copyStrings(typed), true
+		return slices.Clone(typed), true
 	case []any:
 		result := make([]string, 0, len(typed))
 		for _, item := range typed {
@@ -184,8 +185,4 @@ func stringSlice(value any) ([]string, bool) {
 	default:
 		return nil, false
 	}
-}
-
-func copyStrings(values []string) []string {
-	return append([]string{}, values...)
 }

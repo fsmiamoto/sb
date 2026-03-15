@@ -1969,32 +1969,6 @@ func TestStringPointer(t *testing.T) {
 	}
 }
 
-func TestCloneStrings(t *testing.T) {
-	t.Parallel()
-
-	original := []string{"a", "b", "c"}
-	cloned := cloneStrings(original)
-
-	if !reflect.DeepEqual(cloned, original) {
-		t.Fatalf("cloneStrings() = %v, want %v", cloned, original)
-	}
-
-	// Mutating the clone should not affect the original.
-	cloned[0] = "x"
-	if original[0] != "a" {
-		t.Fatal("cloneStrings() should produce an independent copy")
-	}
-
-	// Nil input yields an empty (non-nil) slice.
-	nilClone := cloneStrings(nil)
-	if nilClone == nil {
-		t.Fatal("cloneStrings(nil) = nil, want non-nil empty slice")
-	}
-	if len(nilClone) != 0 {
-		t.Fatalf("cloneStrings(nil) len = %d, want 0", len(nilClone))
-	}
-}
-
 func TestNormalizeImageName(t *testing.T) {
 	t.Parallel()
 

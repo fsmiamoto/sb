@@ -249,8 +249,8 @@ func TestMergeConfig(t *testing.T) {
 		result := MergeConfig(fileConfig, CLIArgs{Mount: []string{"/mnt/other"}})
 		want := MergedConfig{
 			ExtraMounts:    []string{"/mnt/data", "/mnt/other"},
-			EnvPassthrough: []string{},
-			SensitiveDirs:  []string{},
+			EnvPassthrough: nil,
+			SensitiveDirs:  nil,
 		}
 		assertMergedConfigEqual(t, result, want)
 	})
@@ -259,9 +259,9 @@ func TestMergeConfig(t *testing.T) {
 		fileConfig := Config{Defaults: DefaultsConfig{EnvPassthrough: []string{"VAR1"}}}
 		result := MergeConfig(fileConfig, CLIArgs{Env: []string{"VAR2"}})
 		want := MergedConfig{
-			ExtraMounts:    []string{},
+			ExtraMounts:    nil,
 			EnvPassthrough: []string{"VAR1", "VAR2"},
-			SensitiveDirs:  []string{},
+			SensitiveDirs:  nil,
 		}
 		assertMergedConfigEqual(t, result, want)
 	})
@@ -270,9 +270,9 @@ func TestMergeConfig(t *testing.T) {
 		fileConfig := Config{Docker: DockerConfig{Image: "file-image:latest"}}
 		result := MergeConfig(fileConfig, CLIArgs{Image: "cli-image:v2"})
 		want := MergedConfig{
-			ExtraMounts:    []string{},
-			EnvPassthrough: []string{},
-			SensitiveDirs:  []string{},
+			ExtraMounts:    nil,
+			EnvPassthrough: nil,
+			SensitiveDirs:  nil,
 			Image:          "cli-image:v2",
 		}
 		assertMergedConfigEqual(t, result, want)
@@ -281,9 +281,9 @@ func TestMergeConfig(t *testing.T) {
 	t.Run("empty config and args", func(t *testing.T) {
 		result := MergeConfig(Config{}, CLIArgs{})
 		want := MergedConfig{
-			ExtraMounts:    []string{},
-			EnvPassthrough: []string{},
-			SensitiveDirs:  []string{},
+			ExtraMounts:    nil,
+			EnvPassthrough: nil,
+			SensitiveDirs:  nil,
 		}
 		assertMergedConfigEqual(t, result, want)
 	})
@@ -291,9 +291,9 @@ func TestMergeConfig(t *testing.T) {
 	t.Run("missing sections handled", func(t *testing.T) {
 		result := MergeConfig(Config{}, CLIArgs{})
 		want := MergedConfig{
-			ExtraMounts:    []string{},
-			EnvPassthrough: []string{},
-			SensitiveDirs:  []string{},
+			ExtraMounts:    nil,
+			EnvPassthrough: nil,
+			SensitiveDirs:  nil,
 		}
 		assertMergedConfigEqual(t, result, want)
 	})

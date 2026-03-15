@@ -111,9 +111,9 @@ type SandboxManager struct {
 func NewSandboxManager(opts SandboxManagerOptions) *SandboxManager {
 	manager := &SandboxManager{
 		imageName:           opts.ImageName,
-		extraMounts:         cloneStrings(opts.ExtraMounts),
-		envPassthrough:      cloneStrings(opts.EnvPassthrough),
-		customSensitiveDirs: cloneStrings(opts.CustomSensitiveDirs),
+		extraMounts:         slices.Clone(opts.ExtraMounts),
+		envPassthrough:      slices.Clone(opts.EnvPassthrough),
+		customSensitiveDirs: slices.Clone(opts.CustomSensitiveDirs),
 		provider:            opts.DockerClientProvider,
 	}
 	manager.initDefaults()
@@ -555,7 +555,7 @@ func (m *SandboxManager) checkSensitiveDir(path string) (string, bool, error) {
 		return "", false, fmt.Errorf("resolve workspace path %q: %w", path, err)
 	}
 
-	allSensitive := append(cloneStrings(SensitiveDirs), m.customSensitiveDirs...)
+	allSensitive := slices.Concat(SensitiveDirs, m.customSensitiveDirs)
 	for _, sensitiveDir := range allSensitive {
 		resolvedSensitive, err := expandAndAbsPath(sensitiveDir)
 		if err != nil {
@@ -593,7 +593,7 @@ func (m *SandboxManager) buildEnvironment(extraEnvVars []string) []string {
 		"HOST_GID": fmt.Sprintf("%d", gid),
 	}
 
-	allEnvVars := append(cloneStrings(m.envPassthrough), extraEnvVars...)
+	allEnvVars := slices.Concat(m.envPassthrough, extraEnvVars)
 	for _, entry := range allEnvVars {
 		if key, value, ok := strings.Cut(entry, "="); ok {
 			env[key] = value
@@ -671,8 +671,4 @@ func stringPointer(value string) *string {
 	}
 	valueCopy := value
 	return &valueCopy
-}
-
-func cloneStrings(values []string) []string {
-	return append([]string{}, values...)
 }

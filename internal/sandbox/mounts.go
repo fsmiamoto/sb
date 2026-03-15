@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	dockermount "github.com/docker/docker/api/types/mount"
@@ -28,7 +29,7 @@ type MountBuilder struct {
 // NewMountBuilder returns a mount builder seeded with config-provided extra
 // mount paths.
 func NewMountBuilder(extraMounts []string) *MountBuilder {
-	return &MountBuilder{extraMounts: append([]string{}, extraMounts...)}
+	return &MountBuilder{extraMounts: slices.Clone(extraMounts)}
 }
 
 // Build constructs the workspace, default, and user-specified bind mounts.
@@ -61,8 +62,7 @@ func (b *MountBuilder) Build(workspace string, extraCLIMounts []string) ([]docke
 	}
 	mounts = append(mounts, cliMounts...)
 
-	missing := append([]string{}, configMissing...)
-	missing = append(missing, cliMissing...)
+	missing := slices.Concat(configMissing, cliMissing)
 
 	return mounts, missing, nil
 }
