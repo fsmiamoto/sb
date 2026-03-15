@@ -1,6 +1,7 @@
 FROM archlinux:latest
 
-# Update system and install core packages
+# Update system and install all packages in a single layer to avoid
+# partial-upgrade issues and redundant pacman -Scc cache wipes.
 RUN pacman -Syu --noconfirm && \
     pacman -S --noconfirm \
     # Core
@@ -33,14 +34,7 @@ RUN pacman -Syu --noconfirm && \
     jq \
     unzip \
     just \
-    && pacman -Scc --noconfirm
-
-# Configure passwordless sudo for wheel group
-RUN echo '%wheel ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
-
-# Install Playwright browser dependencies (Arch equivalents)
-# Use -Sy to refresh package database (mirrors may have updated since first RUN)
-RUN pacman -Sy --noconfirm \
+    # Playwright browser dependencies
     libxcb \
     libx11 \
     libxext \
@@ -68,13 +62,15 @@ RUN pacman -Sy --noconfirm \
     mesa \
     && pacman -Scc --noconfirm
 
+# Configure passwordless sudo for wheel group
+RUN echo '%wheel ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+
 # Install Claude Code to /home/sandbox/.local/bin
 RUN HOME=/home/sandbox bash -c 'curl -fsSL https://claude.ai/install.sh | bash'
 
-# Install Codex globally via npm
-RUN npm install -g @openai/codex
-RUN npm install -g @mariozechner/pi-coding-agent
-RUN npm install -g agent-browser playwright
+# Install global npm packages in a single layer and clean the cache
+RUN npm install -g @openai/codex @mariozechner/pi-coding-agent agent-browser playwright && \
+    npm cache clean --force
 
 # Set up zsh as default shell
 RUN chsh -s /bin/zsh
@@ -85,8 +81,9 @@ RUN mkdir -p /home/sandbox/.config /home/sandbox/.local/share /home/sandbox/.cac
 # Add user local bin and Go bin to PATH
 ENV PATH="/home/sandbox/go/bin:/home/sandbox/.local/bin:${PATH}"
 
-# Install Go CLI tools
-RUN GOPATH=/home/sandbox/go go install github.com/fsmiamoto/ralfinho/cmd/ralfinho@latest
+# Install Go CLI tools and clean the module cache
+RUN GOPATH=/home/sandbox/go go install github.com/fsmiamoto/ralfinho/cmd/ralfinho@latest && \
+    rm -rf /home/sandbox/go/pkg/mod/cache
 
 # Install Playwright browsers to a shared location accessible by all users
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
