@@ -133,61 +133,6 @@ func TestMountBuilderBuildKeepsExpandedExtraMountTargetAsAbsolutePath(t *testing
 	}
 }
 
-func TestExpandHomePath(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	tests := []struct {
-		name string
-		path string
-		want string
-	}{
-		{
-			name: "empty string",
-			path: "",
-			want: "",
-		},
-		{
-			name: "bare tilde",
-			path: "~",
-			want: home,
-		},
-		{
-			name: "tilde with forward slash",
-			path: "~/Documents/code",
-			want: filepath.Join(home, "Documents/code"),
-		},
-		{
-			name: "tilde with backslash",
-			path: "~\\.config",
-			want: filepath.Join(home, ".config"),
-		},
-		{
-			name: "absolute path unchanged",
-			path: "/usr/local/bin",
-			want: "/usr/local/bin",
-		},
-		{
-			name: "relative path unchanged",
-			path: "relative/path",
-			want: "relative/path",
-		},
-		{
-			name: "tilde in middle unchanged",
-			path: "/some/~/path",
-			want: "/some/~/path",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := expandHomePath(tc.path); got != tc.want {
-				t.Fatalf("expandHomePath(%q) = %q, want %q", tc.path, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestExpandAndAbsPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

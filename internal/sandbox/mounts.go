@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	dockermount "github.com/docker/docker/api/types/mount"
+	"github.com/fsmiamoto/sb/internal/pathutil"
 )
 
 const workspaceMountTarget = "/home/sandbox/workspace"
@@ -70,7 +71,7 @@ func (b *MountBuilder) Build(workspace string, extraCLIMounts []string) ([]docke
 func buildDefaultMounts(specs []MountSpec) ([]dockermount.Mount, error) {
 	mounts := make([]dockermount.Mount, 0, len(specs))
 	for _, spec := range specs {
-		hostPath := expandHomePath(spec.Host)
+		hostPath := pathutil.ExpandHome(spec.Host)
 		if !pathExists(hostPath) {
 			continue
 		}
@@ -91,7 +92,7 @@ func buildReadOnlyExtraMounts(paths []string) ([]dockermount.Mount, []string, er
 	missing := make([]string, 0)
 
 	for _, hostPath := range paths {
-		expandedHost := expandHomePath(hostPath)
+		expandedHost := pathutil.ExpandHome(hostPath)
 		if !pathExists(expandedHost) {
 			missing = append(missing, hostPath)
 			continue
@@ -118,27 +119,7 @@ func buildBindMount(source string, target string, readOnly bool) dockermount.Mou
 }
 
 func expandAndAbsPath(path string) (string, error) {
-	return filepath.Abs(expandHomePath(path))
-}
-
-func expandHomePath(path string) string {
-	if path == "" {
-		return path
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return path
-	}
-
-	switch {
-	case path == "~":
-		return home
-	case strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~\\"):
-		return filepath.Join(home, path[2:])
-	default:
-		return path
-	}
+	return filepath.Abs(pathutil.ExpandHome(path))
 }
 
 func mapContainerPath(hostPath string) string {
@@ -154,7 +135,7 @@ func mapContainerPath(hostPath string) string {
 		return hostPath
 	}
 
-	expandedHost := expandHomePath(hostPath)
+	expandedHost := pathutil.ExpandHome(hostPath)
 	relPath, err := filepath.Rel(home, expandedHost)
 	if err != nil {
 		return hostPath

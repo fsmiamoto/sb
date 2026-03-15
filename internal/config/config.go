@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/fsmiamoto/sb/internal/pathutil"
 )
 
 // DefaultsConfig contains the values loaded from the [defaults] TOML section.
@@ -79,7 +79,7 @@ func LoadConfig(path string) (Config, error) {
 	if path == "" {
 		path = GetDefaultConfigPath()
 	} else {
-		path = expandHome(path)
+		path = pathutil.ExpandHome(path)
 	}
 
 	info, err := os.Stat(path)
@@ -142,30 +142,10 @@ func MergeConfig(fileConfig Config, cliArgs CLIArgs) MergedConfig {
 func expandPaths(paths []string) []string {
 	expanded := make([]string, 0, len(paths))
 	for _, path := range paths {
-		expanded = append(expanded, expandHome(path))
+		expanded = append(expanded, pathutil.ExpandHome(path))
 	}
 
 	return expanded
-}
-
-func expandHome(path string) string {
-	if path == "" {
-		return path
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return path
-	}
-
-	switch {
-	case path == "~":
-		return home
-	case strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~\\"):
-		return filepath.Join(home, path[2:])
-	default:
-		return path
-	}
 }
 
 func stringSlice(value any) ([]string, bool) {
