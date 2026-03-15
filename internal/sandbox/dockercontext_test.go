@@ -139,6 +139,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "DOCKER_HOST set skips context resolution",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				return makeGetenv(map[string]string{
 						"DOCKER_HOST": "unix:///custom/docker.sock",
 					}), func() (string, error) {
@@ -150,6 +151,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "DOCKER_CONTEXT env var resolves to endpoint",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				home := t.TempDir()
 				setupContextMeta(t, home, "colima", "unix:///colima/docker.sock")
 				return makeGetenv(map[string]string{
@@ -163,6 +165,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "currentContext from config.json resolves to endpoint",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				home := t.TempDir()
 				setupDockerConfig(t, home, "orbstack")
 				setupContextMeta(t, home, "orbstack", "unix:///orbstack/docker.sock")
@@ -175,6 +178,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "currentContext is default returns empty",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				home := t.TempDir()
 				setupDockerConfig(t, home, "default")
 				return makeGetenv(nil), func() (string, error) {
@@ -186,6 +190,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "missing config.json returns empty",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				home := t.TempDir()
 				return makeGetenv(nil), func() (string, error) {
 					return home, nil
@@ -196,6 +201,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "empty currentContext returns empty",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				home := t.TempDir()
 				setupDockerConfig(t, home, "")
 				return makeGetenv(nil), func() (string, error) {
@@ -207,6 +213,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "context with no matching meta.json returns empty",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				home := t.TempDir()
 				setupDockerConfig(t, home, "nonexistent")
 				// No meta.json created for "nonexistent"
@@ -219,6 +226,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "meta.json without docker endpoint returns empty",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				home := t.TempDir()
 				setupDockerConfig(t, home, "k8s-only")
 				setupContextMetaNoDocker(t, home, "k8s-only")
@@ -231,6 +239,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "malformed meta.json returns empty",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				home := t.TempDir()
 				setupDockerConfig(t, home, "broken")
 				setupMalformedMeta(t, home, "broken")
@@ -243,6 +252,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "DOCKER_CONTEXT overrides currentContext from config.json",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				home := t.TempDir()
 				setupDockerConfig(t, home, "from-config")
 				setupContextMeta(t, home, "from-config", "unix:///config/docker.sock")
@@ -258,6 +268,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "userHomeDir failure returns empty",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				return makeGetenv(map[string]string{
 						"DOCKER_CONTEXT": "colima",
 					}), func() (string, error) {
@@ -269,6 +280,7 @@ func TestResolveDockerHost(t *testing.T) {
 		{
 			name: "DOCKER_HOST takes precedence over DOCKER_CONTEXT",
 			setup: func(t *testing.T) (func(string) string, func() (string, error)) {
+				t.Helper()
 				home := t.TempDir()
 				setupContextMeta(t, home, "colima", "unix:///colima/docker.sock")
 				return makeGetenv(map[string]string{

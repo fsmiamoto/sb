@@ -9,23 +9,36 @@ run:
 linters:
   default: none
   enable:
+    - asciicheck
     - bodyclose
     - copyloopvar
+    - dupword
     - errcheck
     - errorlint
+    - forcetypeassert
+    - gocheckcompilerdirectives
     - gocritic
+    - goprintffuncname
     - govet
     - ineffassign
     - intrange
     - misspell
     - modernize
+    - nakedret
     - nilerr
+    - noctx
     - perfsprint
+    - predeclared
+    - recvcheck
     - staticcheck
+    - thelper
     - unconvert
+    - unparam
     - unused
     - usestdlibvars
     - usetesting
+    - wastedassign
+    - whitespace
 
 formatters:
   enable:
