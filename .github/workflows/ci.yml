@@ -34,6 +34,22 @@ jobs:
           path: coverage.out
           retention-days: 7
 
+  tidy:
+    name: Tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check go mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
   vet:
     name: Vet
     runs-on: ubuntu-latest
