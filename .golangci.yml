@@ -13,8 +13,12 @@ linters:
     - bodyclose
     - copyloopvar
     - dupword
+    - durationcheck
     - errcheck
     - errorlint
+    - errname
+    - exhaustive
+    - fatcontext
     - forcetypeassert
     - gocheckcompilerdirectives
     - gocritic
@@ -22,10 +26,12 @@ linters:
     - govet
     - ineffassign
     - intrange
+    - mirror
     - misspell
     - modernize
     - nakedret
     - nilerr
+    - nilnesserr
     - noctx
     - perfsprint
     - predeclared
