@@ -97,7 +97,7 @@ func (m *SandboxManager) ExecShell(ctx context.Context, sandbox SandboxInfo) (in
 	exitCode, err := m.runShellCommand(
 		ctx,
 		"docker",
-		buildExecShellArgs(*sandbox.ContainerID, uid, gid),
+		buildExecShellArgs(sandbox.ContainerID, uid, gid),
 		m.stdin,
 		m.stdout,
 		m.stderr,

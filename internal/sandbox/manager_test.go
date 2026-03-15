@@ -240,8 +240,8 @@ func TestSandboxManagerCreateBuildsBundledImageAndCreatesContainer(t *testing.T)
 	if got, want := sandbox.CreatedAt, createdAt; got != want {
 		t.Fatalf("Create() sandbox created_at = %q, want %q", got, want)
 	}
-	if sandbox.ContainerID == nil || *sandbox.ContainerID != createdID {
-		t.Fatalf("Create() sandbox container ID = %#v, want %q", sandbox.ContainerID, createdID)
+	if sandbox.ContainerID != createdID {
+		t.Fatalf("Create() sandbox container ID = %q, want %q", sandbox.ContainerID, createdID)
 	}
 }
 
@@ -475,8 +475,8 @@ func TestCreateForceRecreatesExisting(t *testing.T) {
 	if removedID != "old-id" {
 		t.Fatalf("removed container = %q, want %q", removedID, "old-id")
 	}
-	if sandbox.ContainerID == nil || *sandbox.ContainerID != "new-id" {
-		t.Fatalf("sandbox container ID = %v, want %q", sandbox.ContainerID, "new-id")
+	if sandbox.ContainerID != "new-id" {
+		t.Fatalf("sandbox container ID = %q, want %q", sandbox.ContainerID, "new-id")
 	}
 }
 
@@ -786,8 +786,8 @@ func TestCreateExistingConfirmProceeds(t *testing.T) {
 	if !destroyed {
 		t.Fatal("expected old container to be destroyed")
 	}
-	if sandbox.ContainerID == nil || *sandbox.ContainerID != "new-id" {
-		t.Fatalf("container ID = %v, want new-id", sandbox.ContainerID)
+	if sandbox.ContainerID != "new-id" {
+		t.Fatalf("container ID = %q, want new-id", sandbox.ContainerID)
 	}
 }
 
@@ -863,7 +863,7 @@ func TestAttachNoContainerID(t *testing.T) {
 		getClient: func(context.Context) (dockerSandboxClient, error) {
 			return &fakeSandboxClient{
 				inspectFunc: func(_ context.Context, containerID string) (containertypes.InspectResponse, error) {
-					// Return a sandbox with nil ContainerJSONBase → nil ContainerID.
+					// Return an inspect response with no ID field set → empty ContainerID.
 					return containertypes.InspectResponse{
 						ContainerJSONBase: &containertypes.ContainerJSONBase{
 							Name:    "/sb-proj-abc12345",
@@ -1423,8 +1423,8 @@ func TestSandboxManagerListAndFindSandboxesUseManagedContainerLabels(t *testing.
 	if got, want := sandboxes[0].Name, "sb-my-app-a1b2c3d4"; got != want {
 		t.Fatalf("List() first sandbox = %q, want %q", got, want)
 	}
-	if sandboxes[0].ContainerID == nil || *sandboxes[0].ContainerID != "one-id" {
-		t.Fatalf("List() first container ID = %#v, want %q", sandboxes[0].ContainerID, "one-id")
+	if sandboxes[0].ContainerID != "one-id" {
+		t.Fatalf("List() first container ID = %q, want %q", sandboxes[0].ContainerID, "one-id")
 	}
 	if got, want := sandboxes[0].CreatedAt, "1970-01-01T00:00:01Z"; got != want {
 		t.Fatalf("List() first created_at = %q, want %q", got, want)
@@ -1448,10 +1448,10 @@ func TestSandboxManagerListAndFindSandboxesUseManagedContainerLabels(t *testing.
 func TestSandboxManagerGetContainerStatusHandlesRunningAndMissingContainers(t *testing.T) {
 	ctx := context.Background()
 	inspectErr := errors.New("inspect failed")
-	runningSandbox := SandboxInfo{Name: "sb-project-f630ad93", ContainerID: stringPointer("running-id")}
-	missingSandbox := SandboxInfo{Name: "sb-missing-0f5f4f0e", ContainerID: stringPointer("missing-id")}
+	runningSandbox := SandboxInfo{Name: "sb-project-f630ad93", ContainerID: "running-id"}
+	missingSandbox := SandboxInfo{Name: "sb-missing-0f5f4f0e", ContainerID: "missing-id"}
 	noIDSandbox := SandboxInfo{Name: "sb-no-id-0f5f4f0e"}
-	brokenSandbox := SandboxInfo{Name: "sb-broken-0f5f4f0e", ContainerID: stringPointer("broken-id")}
+	brokenSandbox := SandboxInfo{Name: "sb-broken-0f5f4f0e", ContainerID: "broken-id"}
 
 	manager := &SandboxManager{
 		getClient: func(context.Context) (dockerSandboxClient, error) {
@@ -1537,7 +1537,7 @@ func TestGetContainerStatusGetClientError(t *testing.T) {
 
 	_, err := manager.GetContainerStatus(ctx, SandboxInfo{
 		Name:        "sb-test-12345678",
-		ContainerID: stringPointer("some-id"),
+		ContainerID: "some-id",
 	})
 	if !errors.Is(err, clientErr) {
 		t.Fatalf("GetContainerStatus() error = %v, want %v", err, clientErr)
@@ -1592,7 +1592,7 @@ func TestGetContainerStatusNilAndEmptyState(t *testing.T) {
 
 			status, err := manager.GetContainerStatus(ctx, SandboxInfo{
 				Name:        "sb-test-12345678",
-				ContainerID: stringPointer("some-id"),
+				ContainerID: "some-id",
 			})
 			if err != nil {
 				t.Fatalf("GetContainerStatus() error = %v", err)
@@ -1708,7 +1708,7 @@ func TestSandboxInfoFromInspect(t *testing.T) {
 				Name:        "sb-project-f630ad93",
 				Workspace:   "/home/user/project",
 				CreatedAt:   "2026-03-08T10:30:00Z",
-				ContainerID: ptrStr("abc123"),
+				ContainerID: "abc123",
 				Status:      "running",
 			},
 		},
@@ -1731,7 +1731,7 @@ func TestSandboxInfoFromInspect(t *testing.T) {
 				Name:        "my-container",
 				Workspace:   "/workspace",
 				CreatedAt:   "2026-01-01T00:00:00Z",
-				ContainerID: ptrStr("def456"),
+				ContainerID: "def456",
 			},
 		},
 		{
@@ -1747,11 +1747,11 @@ func TestSandboxInfoFromInspect(t *testing.T) {
 				Name:        "fallback-name",
 				Workspace:   "",
 				CreatedAt:   "2026-06-15T12:00:00Z",
-				ContainerID: ptrStr("ghi789"),
+				ContainerID: "ghi789",
 			},
 		},
 		{
-			name: "nil ContainerJSONBase yields empty createdAt",
+			name: "nil ContainerJSONBase yields empty ContainerID",
 			inspect: containertypes.InspectResponse{
 				Config: &containertypes.Config{
 					Labels: map[string]string{
@@ -1764,17 +1764,17 @@ func TestSandboxInfoFromInspect(t *testing.T) {
 				Name:        "sb-test",
 				Workspace:   "/tmp/test",
 				CreatedAt:   "",
-				ContainerID: nil,
+				ContainerID: "",
 			},
 		},
 		{
-			name:    "empty ID yields nil ContainerID",
+			name:    "empty ID yields empty ContainerID",
 			inspect: containertypes.InspectResponse{},
 			want: SandboxInfo{
 				Name:        "",
 				Workspace:   "",
 				CreatedAt:   "",
-				ContainerID: nil,
+				ContainerID: "",
 			},
 		},
 	}
@@ -1803,7 +1803,7 @@ func TestSandboxInfoFromSummary(t *testing.T) {
 				Name:        "sb-project-f630ad93",
 				Workspace:   "/home/user/project",
 				CreatedAt:   "2025-03-08T09:50:00Z",
-				ContainerID: ptrStr("abc123"),
+				ContainerID: "abc123",
 			},
 		},
 		{
@@ -1819,7 +1819,7 @@ func TestSandboxInfoFromSummary(t *testing.T) {
 				Name:        "my-container",
 				Workspace:   "/workspace",
 				CreatedAt:   "",
-				ContainerID: ptrStr("def456"),
+				ContainerID: "def456",
 			},
 		},
 		{
@@ -1835,7 +1835,7 @@ func TestSandboxInfoFromSummary(t *testing.T) {
 				Name:        "sb-zero",
 				Workspace:   "",
 				CreatedAt:   "",
-				ContainerID: ptrStr("ghi789"),
+				ContainerID: "ghi789",
 			},
 		},
 		{
@@ -1848,7 +1848,7 @@ func TestSandboxInfoFromSummary(t *testing.T) {
 				Name:        "",
 				Workspace:   "",
 				CreatedAt:   "2024-01-01T00:00:00Z",
-				ContainerID: ptrStr("jkl012"),
+				ContainerID: "jkl012",
 			},
 		},
 		{
@@ -1866,7 +1866,7 @@ func TestSandboxInfoFromSummary(t *testing.T) {
 			want: SandboxInfo{
 				Name:        "sb-running",
 				Workspace:   "/workspace",
-				ContainerID: ptrStr("mno345"),
+				ContainerID: "mno345",
 				Status:      "running",
 			},
 		},
@@ -1966,24 +1966,6 @@ func TestIsManagedInspect(t *testing.T) {
 				t.Fatalf("isManagedInspect() = %v, want %v", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestStringPointer(t *testing.T) {
-	t.Parallel()
-
-	if got := stringPointer(""); got != nil {
-		t.Fatalf("stringPointer(\"\") = %v, want nil", got)
-	}
-
-	got := stringPointer("hello")
-	if got == nil || *got != "hello" {
-		t.Fatalf("stringPointer(\"hello\") = %v, want pointer to %q", got, "hello")
-	}
-
-	ptr := stringPointer("test")
-	if ptr == nil || *ptr != "test" {
-		t.Fatalf("stringPointer(\"test\") = %v, want pointer to %q", ptr, "test")
 	}
 }
 
@@ -2193,24 +2175,6 @@ func TestCheckSensitiveDirDetectsHomeDirectory(t *testing.T) {
 
 // --- destroyContainer tests ---
 
-func TestDestroyContainerNilContainerID(t *testing.T) {
-	t.Parallel()
-	manager := &SandboxManager{
-		getClient: func(context.Context) (dockerSandboxClient, error) {
-			t.Fatal("getClient should not be called when ContainerID is nil")
-			return nil, nil
-		},
-	}
-
-	err := manager.destroyContainer(context.Background(), SandboxInfo{
-		Name:        "sb-test-abc123",
-		ContainerID: nil,
-	})
-	if err != nil {
-		t.Fatalf("destroyContainer() error = %v, want nil", err)
-	}
-}
-
 func TestDestroyContainerEmptyContainerID(t *testing.T) {
 	t.Parallel()
 	manager := &SandboxManager{
@@ -2222,7 +2186,7 @@ func TestDestroyContainerEmptyContainerID(t *testing.T) {
 
 	err := manager.destroyContainer(context.Background(), SandboxInfo{
 		Name:        "sb-test-abc123",
-		ContainerID: ptrStr(""),
+		ContainerID: "",
 	})
 	if err != nil {
 		t.Fatalf("destroyContainer() error = %v, want nil", err)
@@ -2243,7 +2207,7 @@ func TestDestroyContainerAlreadyGone(t *testing.T) {
 
 	err := manager.destroyContainer(context.Background(), SandboxInfo{
 		Name:        "sb-test-abc123",
-		ContainerID: ptrStr("deadbeef"),
+		ContainerID: "deadbeef",
 	})
 	if err != nil {
 		t.Fatalf("destroyContainer() error = %v, want nil for already-gone container", err)
@@ -2282,7 +2246,7 @@ func TestDestroyContainerStoppedThenRemoved(t *testing.T) {
 
 	err := manager.destroyContainer(context.Background(), SandboxInfo{
 		Name:        "sb-test-abc123",
-		ContainerID: ptrStr("deadbeef"),
+		ContainerID: "deadbeef",
 	})
 	if err != nil {
 		t.Fatalf("destroyContainer() error = %v, want nil", err)
@@ -2324,7 +2288,7 @@ func TestDestroyContainerRunningStoppedThenRemoved(t *testing.T) {
 
 	err := manager.destroyContainer(context.Background(), SandboxInfo{
 		Name:        "sb-test-abc123",
-		ContainerID: ptrStr("deadbeef"),
+		ContainerID: "deadbeef",
 	})
 	if err != nil {
 		t.Fatalf("destroyContainer() error = %v, want nil", err)
@@ -2366,7 +2330,7 @@ func TestDestroyContainerDisappearsAfterStop(t *testing.T) {
 
 	err := manager.destroyContainer(context.Background(), SandboxInfo{
 		Name:        "sb-test-abc123",
-		ContainerID: ptrStr("deadbeef"),
+		ContainerID: "deadbeef",
 	})
 	if err != nil {
 		t.Fatalf("destroyContainer() error = %v, want nil for container gone during stop", err)
@@ -2398,7 +2362,7 @@ func TestDestroyContainerDisappearsAfterRemove(t *testing.T) {
 
 	err := manager.destroyContainer(context.Background(), SandboxInfo{
 		Name:        "sb-test-abc123",
-		ContainerID: ptrStr("deadbeef"),
+		ContainerID: "deadbeef",
 	})
 	if err != nil {
 		t.Fatalf("destroyContainer() error = %v, want nil for container gone during remove", err)
@@ -2419,7 +2383,7 @@ func TestDestroyContainerInspectError(t *testing.T) {
 
 	err := manager.destroyContainer(context.Background(), SandboxInfo{
 		Name:        "sb-test-abc123",
-		ContainerID: ptrStr("deadbeef"),
+		ContainerID: "deadbeef",
 	})
 	if err == nil {
 		t.Fatal("destroyContainer() error = nil, want error")
@@ -2454,7 +2418,7 @@ func TestDestroyContainerStopError(t *testing.T) {
 
 	err := manager.destroyContainer(context.Background(), SandboxInfo{
 		Name:        "sb-test-abc123",
-		ContainerID: ptrStr("deadbeef"),
+		ContainerID: "deadbeef",
 	})
 	if err == nil {
 		t.Fatal("destroyContainer() error = nil, want error")
@@ -2489,7 +2453,7 @@ func TestDestroyContainerRemoveError(t *testing.T) {
 
 	err := manager.destroyContainer(context.Background(), SandboxInfo{
 		Name:        "sb-test-abc123",
-		ContainerID: ptrStr("deadbeef"),
+		ContainerID: "deadbeef",
 	})
 	if err == nil {
 		t.Fatal("destroyContainer() error = nil, want error")
@@ -2509,7 +2473,7 @@ func TestDestroyContainerClientError(t *testing.T) {
 
 	err := manager.destroyContainer(context.Background(), SandboxInfo{
 		Name:        "sb-test-abc123",
-		ContainerID: ptrStr("deadbeef"),
+		ContainerID: "deadbeef",
 	})
 	if err == nil {
 		t.Fatal("destroyContainer() error = nil, want error")
@@ -2713,19 +2677,12 @@ func assertSandboxInfoEqual(t *testing.T, got, want SandboxInfo) {
 	if got.CreatedAt != want.CreatedAt {
 		t.Fatalf("CreatedAt = %q, want %q", got.CreatedAt, want.CreatedAt)
 	}
-	if (got.ContainerID == nil) != (want.ContainerID == nil) {
-		t.Fatalf("ContainerID nil = %v, want nil = %v", got.ContainerID == nil, want.ContainerID == nil)
-	}
-	if got.ContainerID != nil && *got.ContainerID != *want.ContainerID {
-		t.Fatalf("ContainerID = %q, want %q", *got.ContainerID, *want.ContainerID)
+	if got.ContainerID != want.ContainerID {
+		t.Fatalf("ContainerID = %q, want %q", got.ContainerID, want.ContainerID)
 	}
 	if got.Status != want.Status {
 		t.Fatalf("Status = %q, want %q", got.Status, want.Status)
 	}
-}
-
-func ptrStr(s string) *string {
-	return &s
 }
 
 func managedInspect(id string, name string, workspace string, createdAt string, status string) containertypes.InspectResponse {

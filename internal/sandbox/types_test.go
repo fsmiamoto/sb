@@ -26,17 +26,13 @@ func TestSandboxInfoGetName(t *testing.T) {
 func TestSandboxInfoHasContainerID(t *testing.T) {
 	t.Parallel()
 
-	empty := ""
-	valid := "abc123"
-
 	tests := []struct {
 		name string
 		info SandboxInfo
 		want bool
 	}{
-		{"nil pointer", SandboxInfo{}, false},
-		{"empty string", SandboxInfo{ContainerID: &empty}, false},
-		{"non-empty string", SandboxInfo{ContainerID: &valid}, true},
+		{"empty string", SandboxInfo{}, false},
+		{"non-empty string", SandboxInfo{ContainerID: "abc123"}, true},
 	}
 
 	for _, tt := range tests {

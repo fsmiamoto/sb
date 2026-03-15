@@ -97,7 +97,7 @@ func TestSandboxManagerExecShellRunsDockerExecWithSetpriv(t *testing.T) {
 
 	exitCode, err := manager.ExecShell(context.Background(), SandboxInfo{
 		Name:        "sb-project-f630ad93",
-		ContainerID: stringPointer("container-id"),
+		ContainerID: "container-id",
 	})
 	if err != nil {
 		t.Fatalf("ExecShell() error = %v", err)

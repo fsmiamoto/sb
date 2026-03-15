@@ -33,7 +33,7 @@ type SandboxInfo struct {
 	Name        string
 	Workspace   string
 	CreatedAt   string
-	ContainerID *string
+	ContainerID string
 	Status      string
 }
 
@@ -44,7 +44,7 @@ func (s SandboxInfo) GetName() string {
 
 // hasContainerID reports whether the sandbox has a non-empty container ID.
 func (s SandboxInfo) hasContainerID() bool {
-	return s.ContainerID != nil && *s.ContainerID != ""
+	return s.ContainerID != ""
 }
 
 // noContainerIDError returns the standard error for a sandbox without a

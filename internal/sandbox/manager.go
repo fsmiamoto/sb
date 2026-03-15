@@ -274,7 +274,7 @@ func (m *SandboxManager) Attach(ctx context.Context, name string, workspace stri
 		if err != nil {
 			return SandboxInfo{}, err
 		}
-		if err := cli.ContainerStart(ctx, *sandbox.ContainerID, containertypes.StartOptions{}); err != nil {
+		if err := cli.ContainerStart(ctx, sandbox.ContainerID, containertypes.StartOptions{}); err != nil {
 			return SandboxInfo{}, fmt.Errorf("start sandbox %q: %w", sandbox.Name, err)
 		}
 	}
@@ -304,7 +304,7 @@ func (m *SandboxManager) Stop(ctx context.Context, name string, workspace string
 		if err != nil {
 			return SandboxInfo{}, err
 		}
-		if err := cli.ContainerStop(ctx, *sandbox.ContainerID, containertypes.StopOptions{}); err != nil {
+		if err := cli.ContainerStop(ctx, sandbox.ContainerID, containertypes.StopOptions{}); err != nil {
 			return SandboxInfo{}, fmt.Errorf("stop sandbox %q: %w", sandbox.Name, err)
 		}
 	}
@@ -395,7 +395,7 @@ func (m *SandboxManager) GetContainerStatus(ctx context.Context, sandbox Sandbox
 		return "", err
 	}
 
-	inspect, err := cli.ContainerInspect(ctx, *sandbox.ContainerID)
+	inspect, err := cli.ContainerInspect(ctx, sandbox.ContainerID)
 	if err != nil {
 		if cerrdefs.IsNotFound(err) {
 			return unknownContainerStatus, nil
@@ -529,7 +529,7 @@ func (m *SandboxManager) destroyContainer(ctx context.Context, sandbox SandboxIn
 		return err
 	}
 
-	inspect, err := cli.ContainerInspect(ctx, *sandbox.ContainerID)
+	inspect, err := cli.ContainerInspect(ctx, sandbox.ContainerID)
 	if err != nil {
 		if cerrdefs.IsNotFound(err) {
 			return nil
@@ -538,7 +538,7 @@ func (m *SandboxManager) destroyContainer(ctx context.Context, sandbox SandboxIn
 	}
 
 	if inspect.State != nil && inspect.State.Status == "running" {
-		if err := cli.ContainerStop(ctx, *sandbox.ContainerID, containertypes.StopOptions{}); err != nil {
+		if err := cli.ContainerStop(ctx, sandbox.ContainerID, containertypes.StopOptions{}); err != nil {
 			if cerrdefs.IsNotFound(err) {
 				return nil
 			}
@@ -546,7 +546,7 @@ func (m *SandboxManager) destroyContainer(ctx context.Context, sandbox SandboxIn
 		}
 	}
 
-	if err := cli.ContainerRemove(ctx, *sandbox.ContainerID, containertypes.RemoveOptions{}); err != nil {
+	if err := cli.ContainerRemove(ctx, sandbox.ContainerID, containertypes.RemoveOptions{}); err != nil {
 		if cerrdefs.IsNotFound(err) {
 			return nil
 		}
@@ -641,7 +641,7 @@ func sandboxInfoFromInspect(inspect containertypes.InspectResponse) SandboxInfo 
 		Name:        name,
 		Workspace:   labels[workspaceLabelKey],
 		CreatedAt:   createdAt,
-		ContainerID: stringPointer(id),
+		ContainerID: id,
 		Status:      status,
 	}
 }
@@ -661,7 +661,7 @@ func sandboxInfoFromSummary(summary containertypes.Summary) SandboxInfo {
 		Name:        name,
 		Workspace:   summary.Labels[workspaceLabelKey],
 		CreatedAt:   createdAt,
-		ContainerID: stringPointer(summary.ID),
+		ContainerID: summary.ID,
 		Status:      summary.State,
 	}
 }
@@ -675,11 +675,4 @@ func inspectLabels(inspect containertypes.InspectResponse) map[string]string {
 
 func isManagedInspect(inspect containertypes.InspectResponse) bool {
 	return inspectLabels(inspect)[managedLabelKey] == managedLabelValue
-}
-
-func stringPointer(value string) *string {
-	if value == "" {
-		return nil
-	}
-	return &value
 }
